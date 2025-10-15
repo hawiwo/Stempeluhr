@@ -1,0 +1,43 @@
+{
+    "logs": [
+        {
+            "outputFile": "com.example.wear-mergeDebugResources-22:/values-ur/values-ur.xml",
+            "map": [
+                {
+                    "source": "/home/harry/.gradle/caches/8.13/transforms/0ccb5d1a1bc1bebbb42dd56dc577db29/transformed/core-1.13.1/res/values-ur/values-ur.xml",
+                    "from": {
+                        "startLines": "2,3,4,5,6,7,8,9",
+                        "startColumns": "4,4,4,4,4,4,4,4",
+                        "startOffsets": "55,153,255,357,461,564,662,776",
+                        "endColumns": "97,101,101,103,102,97,113,100",
+                        "endOffsets": "148,250,352,456,559,657,771,872"
+                    },
+                    "to": {
+                        "startLines": "2,3,4,5,6,7,8,12",
+                        "startColumns": "4,4,4,4,4,4,4,4",
+                        "startOffsets": "55,153,255,357,461,564,662,1121",
+                        "endColumns": "97,101,101,103,102,97,113,100",
+                        "endOffsets": "148,250,352,456,559,657,771,1217"
+                    }
+                },
+                {
+                    "source": "/home/harry/.gradle/caches/8.13/transforms/4ca2133252ce30c4dead3dd7b238adc7/transformed/wear-1.3.0/res/values-ur/values-ur.xml",
+                    "from": {
+                        "startLines": "2,3,4,5,6",
+                        "startColumns": "4,4,4,4,4",
+                        "startOffsets": "55,162,289,400,509",
+                        "endColumns": "106,126,110,108,111",
+                        "endOffsets": "157,284,395,504,616"
+                    },
+                    "to": {
+                        "startLines": "9,10,11,13,14",
+                        "startColumns": "4,4,4,4,4",
+                        "startOffsets": "776,883,1010,1222,1331",
+                        "endColumns": "106,126,110,108,111",
+                        "endOffsets": "878,1005,1116,1326,1438"
+                    }
+                }
+            ]
+        }
+    ]
+}

@@ -1,0 +1,3 @@
+/home/harry/AndroidStudioProjects/Stempeluhr/wear/src/main/java/com/example/wear/presentation/theme/Theme.kt
+/home/harry/AndroidStudioProjects/Stempeluhr/wear/src/main/java/com/example/wear/presentation/MainActivity.kt
+/home/harry/AndroidStudioProjects/Stempeluhr/wear/src/main/java/com/example/stempeluhr/ArbeitszeitTileService.kt

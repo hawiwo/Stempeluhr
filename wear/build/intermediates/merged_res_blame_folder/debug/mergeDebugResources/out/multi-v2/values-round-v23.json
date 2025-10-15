@@ -1,0 +1,36 @@
+{
+    "logs": [
+        {
+            "outputFile": "com.example.wear-mergeDebugResources-22:/values-round-v23/values-round-v23.xml",
+            "map": [
+                {
+                    "source": "/home/harry/.gradle/caches/8.13/transforms/4ca2133252ce30c4dead3dd7b238adc7/transformed/wear-1.3.0/res/values-round-v23/values-round-v23.xml",
+                    "from": {
+                        "startLines": "2",
+                        "startColumns": "4",
+                        "startOffsets": "55",
+                        "endColumns": "84",
+                        "endOffsets": "135"
+                    }
+                },
+                {
+                    "source": "/home/harry/AndroidStudioProjects/Stempeluhr/wear/src/main/res/values-round/strings.xml",
+                    "from": {
+                        "startLines": "1",
+                        "startColumns": "4",
+                        "startOffsets": "16",
+                        "endColumns": "75",
+                        "endOffsets": "87"
+                    },
+                    "to": {
+                        "startLines": "3",
+                        "startColumns": "4",
+                        "startOffsets": "140",
+                        "endColumns": "75",
+                        "endOffsets": "211"
+                    }
+                }
+            ]
+        }
+    ]
+}

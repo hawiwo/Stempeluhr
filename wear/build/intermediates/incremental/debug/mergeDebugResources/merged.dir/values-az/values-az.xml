@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string msgid="881409763997275156" name="call_notification_answer_action">"Cavab verin"</string>
+    <string msgid="8793775615905189152" name="call_notification_answer_video_action">"Video"</string>
+    <string msgid="3229508546291798546" name="call_notification_decline_action">"İmtina edin"</string>
+    <string msgid="2659457946726154263" name="call_notification_hang_up_action">"Dəstəyi asın"</string>
+    <string msgid="6107532579223922871" name="call_notification_incoming_text">"Gələn zəng"</string>
+    <string msgid="8623827134497363134" name="call_notification_ongoing_text">"Davam edən zəng"</string>
+    <string msgid="59049573811482460" name="call_notification_screening_text">"Gələn zəng göstərilir"</string>
+    <string msgid="6412144553299494336" name="confirmation_overlay_a11y_description_fail">"Alınmadı"</string>
+    <string msgid="8809042819843332546" name="confirmation_overlay_a11y_description_phone">"Telefonunuzda açıldı"</string>
+    <string msgid="2936753235333429892" name="confirmation_overlay_a11y_description_success">"Uğurlu oldu"</string>
+    <string msgid="6277540029070332960" name="status_bar_notification_info_overflow">"999+"</string>
+    <string msgid="8863821639144537553" name="ws_action_drawer_content_description">"Əməliyyat qutusu"</string>
+    <string msgid="777117228299084604" name="ws_navigation_drawer_content_description">"Naviqasiya qutusu"</string>
+</resources>

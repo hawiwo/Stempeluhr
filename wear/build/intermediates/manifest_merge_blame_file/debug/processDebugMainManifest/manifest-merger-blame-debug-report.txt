@@ -1,0 +1,181 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+3    package="com.example.wear"
+4    android:versionCode="1"
+5    android:versionName="1.0" >
+6
+7    <uses-sdk
+8        android:minSdkVersion="34"
+9        android:targetSdkVersion="36" />
+10
+11    <uses-permission android:name="android.permission.WAKE_LOCK" />
+11-->/home/harry/AndroidStudioProjects/Stempeluhr/wear/src/main/AndroidManifest.xml:4:5-68
+11-->/home/harry/AndroidStudioProjects/Stempeluhr/wear/src/main/AndroidManifest.xml:4:22-65
+12
+13    <uses-feature android:name="android.hardware.type.watch" />
+13-->/home/harry/AndroidStudioProjects/Stempeluhr/wear/src/main/AndroidManifest.xml:6:5-64
+13-->/home/harry/AndroidStudioProjects/Stempeluhr/wear/src/main/AndroidManifest.xml:6:19-61
+14
+15    <service
+15-->/home/harry/AndroidStudioProjects/Stempeluhr/wear/src/main/AndroidManifest.xml:41:1-52:11
+16        android:name="com.example.wear.ArbeitszeitTileService"
+16-->/home/harry/AndroidStudioProjects/Stempeluhr/wear/src/main/AndroidManifest.xml:42:5-43
+17        android:exported="true"
+17-->/home/harry/AndroidStudioProjects/Stempeluhr/wear/src/main/AndroidManifest.xml:43:5-28
+18        android:permission="android.permission.BIND_TILE_PROVIDER" >
+18-->/home/harry/AndroidStudioProjects/Stempeluhr/wear/src/main/AndroidManifest.xml:44:5-63
+19        <intent-filter>
+19-->/home/harry/AndroidStudioProjects/Stempeluhr/wear/src/main/AndroidManifest.xml:45:5-47:21
+20            <action android:name="androidx.wear.tiles.action.TILE" />
+20-->/home/harry/AndroidStudioProjects/Stempeluhr/wear/src/main/AndroidManifest.xml:46:9-66
+20-->/home/harry/AndroidStudioProjects/Stempeluhr/wear/src/main/AndroidManifest.xml:46:17-63
+21        </intent-filter>
+22
+23        <meta-data
+23-->/home/harry/AndroidStudioProjects/Stempeluhr/wear/src/main/AndroidManifest.xml:49:5-51:52
+24            android:name="androidx.wear.tiles.TILE_PROVIDER"
+24-->/home/harry/AndroidStudioProjects/Stempeluhr/wear/src/main/AndroidManifest.xml:50:9-57
+25            android:resource="@xml/arbeitszeit_tile" />
+25-->/home/harry/AndroidStudioProjects/Stempeluhr/wear/src/main/AndroidManifest.xml:51:9-49
+26    </service>
+27
+28    <permission
+28-->[androidx.core:core:1.13.1] /home/harry/.gradle/caches/8.13/transforms/0ccb5d1a1bc1bebbb42dd56dc577db29/transformed/core-1.13.1/AndroidManifest.xml:22:5-24:47
+29        android:name="com.example.wear.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+29-->[androidx.core:core:1.13.1] /home/harry/.gradle/caches/8.13/transforms/0ccb5d1a1bc1bebbb42dd56dc577db29/transformed/core-1.13.1/AndroidManifest.xml:23:9-81
+30        android:protectionLevel="signature" />
+30-->[androidx.core:core:1.13.1] /home/harry/.gradle/caches/8.13/transforms/0ccb5d1a1bc1bebbb42dd56dc577db29/transformed/core-1.13.1/AndroidManifest.xml:24:9-44
+31
+32    <uses-permission android:name="com.example.wear.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />
+32-->[androidx.core:core:1.13.1] /home/harry/.gradle/caches/8.13/transforms/0ccb5d1a1bc1bebbb42dd56dc577db29/transformed/core-1.13.1/AndroidManifest.xml:26:5-97
+32-->[androidx.core:core:1.13.1] /home/harry/.gradle/caches/8.13/transforms/0ccb5d1a1bc1bebbb42dd56dc577db29/transformed/core-1.13.1/AndroidManifest.xml:26:22-94
+33
+34    <queries>
+34-->[androidx.wear.tiles:tiles:1.3.0] /home/harry/.gradle/caches/8.13/transforms/d328cbae8b79489fc59f9b93d5288258/transformed/tiles-1.3.0/AndroidManifest.xml:7:5-11:15
+35        <intent>
+35-->[androidx.wear.tiles:tiles:1.3.0] /home/harry/.gradle/caches/8.13/transforms/d328cbae8b79489fc59f9b93d5288258/transformed/tiles-1.3.0/AndroidManifest.xml:8:9-10:18
+36            <action android:name="androidx.wear.tiles.action.BIND_UPDATE_REQUESTER" />
+36-->[androidx.wear.tiles:tiles:1.3.0] /home/harry/.gradle/caches/8.13/transforms/d328cbae8b79489fc59f9b93d5288258/transformed/tiles-1.3.0/AndroidManifest.xml:9:13-87
+36-->[androidx.wear.tiles:tiles:1.3.0] /home/harry/.gradle/caches/8.13/transforms/d328cbae8b79489fc59f9b93d5288258/transformed/tiles-1.3.0/AndroidManifest.xml:9:21-84
+37        </intent>
+38    </queries>
+39
+40    <application
+40-->/home/harry/AndroidStudioProjects/Stempeluhr/wear/src/main/AndroidManifest.xml:8:5-40:19
+41        android:allowBackup="true"
+41-->/home/harry/AndroidStudioProjects/Stempeluhr/wear/src/main/AndroidManifest.xml:9:9-35
+42        android:appComponentFactory="androidx.core.app.CoreComponentFactory"
+42-->[androidx.core:core:1.13.1] /home/harry/.gradle/caches/8.13/transforms/0ccb5d1a1bc1bebbb42dd56dc577db29/transformed/core-1.13.1/AndroidManifest.xml:28:18-86
+43        android:debuggable="true"
+44        android:extractNativeLibs="false"
+45        android:icon="@mipmap/ic_launcher"
+45-->/home/harry/AndroidStudioProjects/Stempeluhr/wear/src/main/AndroidManifest.xml:10:9-43
+46        android:label="@string/app_name"
+46-->/home/harry/AndroidStudioProjects/Stempeluhr/wear/src/main/AndroidManifest.xml:11:9-41
+47        android:supportsRtl="true"
+47-->/home/harry/AndroidStudioProjects/Stempeluhr/wear/src/main/AndroidManifest.xml:12:9-35
+48        android:testOnly="true"
+49        android:theme="@android:style/Theme.DeviceDefault" >
+49-->/home/harry/AndroidStudioProjects/Stempeluhr/wear/src/main/AndroidManifest.xml:13:9-59
+50        <uses-library
+50-->/home/harry/AndroidStudioProjects/Stempeluhr/wear/src/main/AndroidManifest.xml:14:9-16:39
+51            android:name="com.google.android.wearable"
+51-->/home/harry/AndroidStudioProjects/Stempeluhr/wear/src/main/AndroidManifest.xml:15:13-55
+52            android:required="true" />
+52-->/home/harry/AndroidStudioProjects/Stempeluhr/wear/src/main/AndroidManifest.xml:16:13-36
+53        <uses-library
+53-->/home/harry/AndroidStudioProjects/Stempeluhr/wear/src/main/AndroidManifest.xml:17:9-19:40
+54            android:name="wear-sdk"
+54-->/home/harry/AndroidStudioProjects/Stempeluhr/wear/src/main/AndroidManifest.xml:18:13-36
+55            android:required="false" />
+55-->/home/harry/AndroidStudioProjects/Stempeluhr/wear/src/main/AndroidManifest.xml:19:13-37
+56
+57        <!--
+58               Set to true if your app is Standalone, that is, it does not require the handheld
+59               app to run.
+60        -->
+61        <meta-data
+61-->/home/harry/AndroidStudioProjects/Stempeluhr/wear/src/main/AndroidManifest.xml:25:9-27:36
+62            android:name="com.google.android.wearable.standalone"
+62-->/home/harry/AndroidStudioProjects/Stempeluhr/wear/src/main/AndroidManifest.xml:26:13-66
+63            android:value="true" />
+63-->/home/harry/AndroidStudioProjects/Stempeluhr/wear/src/main/AndroidManifest.xml:27:13-33
+64
+65        <activity
+65-->/home/harry/AndroidStudioProjects/Stempeluhr/wear/src/main/AndroidManifest.xml:29:9-39:20
+66            android:name="com.example.wear.presentation.MainActivity"
+66-->/home/harry/AndroidStudioProjects/Stempeluhr/wear/src/main/AndroidManifest.xml:30:13-54
+67            android:exported="true"
+67-->/home/harry/AndroidStudioProjects/Stempeluhr/wear/src/main/AndroidManifest.xml:31:13-36
+68            android:taskAffinity=""
+68-->/home/harry/AndroidStudioProjects/Stempeluhr/wear/src/main/AndroidManifest.xml:32:13-36
+69            android:theme="@style/MainActivityTheme.Starting" >
+69-->/home/harry/AndroidStudioProjects/Stempeluhr/wear/src/main/AndroidManifest.xml:33:13-62
+70            <intent-filter>
+70-->/home/harry/AndroidStudioProjects/Stempeluhr/wear/src/main/AndroidManifest.xml:34:13-38:29
+71                <action android:name="android.intent.action.MAIN" />
+71-->/home/harry/AndroidStudioProjects/Stempeluhr/wear/src/main/AndroidManifest.xml:35:17-69
+71-->/home/harry/AndroidStudioProjects/Stempeluhr/wear/src/main/AndroidManifest.xml:35:25-66
+72
+73                <category android:name="android.intent.category.LAUNCHER" />
+73-->/home/harry/AndroidStudioProjects/Stempeluhr/wear/src/main/AndroidManifest.xml:37:17-77
+73-->/home/harry/AndroidStudioProjects/Stempeluhr/wear/src/main/AndroidManifest.xml:37:27-74
+74            </intent-filter>
+75        </activity>
+76
+77        <provider
+77-->[androidx.profileinstaller:profileinstaller:1.3.0] /home/harry/.gradle/caches/8.13/transforms/529b0b031151effd9703c6dd27cbb8cf/transformed/profileinstaller-1.3.0/AndroidManifest.xml:24:9-32:20
+78            android:name="androidx.startup.InitializationProvider"
+78-->[androidx.profileinstaller:profileinstaller:1.3.0] /home/harry/.gradle/caches/8.13/transforms/529b0b031151effd9703c6dd27cbb8cf/transformed/profileinstaller-1.3.0/AndroidManifest.xml:25:13-67
+79            android:authorities="com.example.wear.androidx-startup"
+79-->[androidx.profileinstaller:profileinstaller:1.3.0] /home/harry/.gradle/caches/8.13/transforms/529b0b031151effd9703c6dd27cbb8cf/transformed/profileinstaller-1.3.0/AndroidManifest.xml:26:13-68
+80            android:exported="false" >
+80-->[androidx.profileinstaller:profileinstaller:1.3.0] /home/harry/.gradle/caches/8.13/transforms/529b0b031151effd9703c6dd27cbb8cf/transformed/profileinstaller-1.3.0/AndroidManifest.xml:27:13-37
+81            <meta-data
+81-->[androidx.profileinstaller:profileinstaller:1.3.0] /home/harry/.gradle/caches/8.13/transforms/529b0b031151effd9703c6dd27cbb8cf/transformed/profileinstaller-1.3.0/AndroidManifest.xml:29:13-31:52
+82                android:name="androidx.profileinstaller.ProfileInstallerInitializer"
+82-->[androidx.profileinstaller:profileinstaller:1.3.0] /home/harry/.gradle/caches/8.13/transforms/529b0b031151effd9703c6dd27cbb8cf/transformed/profileinstaller-1.3.0/AndroidManifest.xml:30:17-85
+83                android:value="androidx.startup" />
+83-->[androidx.profileinstaller:profileinstaller:1.3.0] /home/harry/.gradle/caches/8.13/transforms/529b0b031151effd9703c6dd27cbb8cf/transformed/profileinstaller-1.3.0/AndroidManifest.xml:31:17-49
+84        </provider>
+85
+86        <receiver
+86-->[androidx.profileinstaller:profileinstaller:1.3.0] /home/harry/.gradle/caches/8.13/transforms/529b0b031151effd9703c6dd27cbb8cf/transformed/profileinstaller-1.3.0/AndroidManifest.xml:34:9-52:20
+87            android:name="androidx.profileinstaller.ProfileInstallReceiver"
+87-->[androidx.profileinstaller:profileinstaller:1.3.0] /home/harry/.gradle/caches/8.13/transforms/529b0b031151effd9703c6dd27cbb8cf/transformed/profileinstaller-1.3.0/AndroidManifest.xml:35:13-76
+88            android:directBootAware="false"
+88-->[androidx.profileinstaller:profileinstaller:1.3.0] /home/harry/.gradle/caches/8.13/transforms/529b0b031151effd9703c6dd27cbb8cf/transformed/profileinstaller-1.3.0/AndroidManifest.xml:36:13-44
+89            android:enabled="true"
+89-->[androidx.profileinstaller:profileinstaller:1.3.0] /home/harry/.gradle/caches/8.13/transforms/529b0b031151effd9703c6dd27cbb8cf/transformed/profileinstaller-1.3.0/AndroidManifest.xml:37:13-35
+90            android:exported="true"
+90-->[androidx.profileinstaller:profileinstaller:1.3.0] /home/harry/.gradle/caches/8.13/transforms/529b0b031151effd9703c6dd27cbb8cf/transformed/profileinstaller-1.3.0/AndroidManifest.xml:38:13-36
+91            android:permission="android.permission.DUMP" >
+91-->[androidx.profileinstaller:profileinstaller:1.3.0] /home/harry/.gradle/caches/8.13/transforms/529b0b031151effd9703c6dd27cbb8cf/transformed/profileinstaller-1.3.0/AndroidManifest.xml:39:13-57
+92            <intent-filter>
+92-->[androidx.profileinstaller:profileinstaller:1.3.0] /home/harry/.gradle/caches/8.13/transforms/529b0b031151effd9703c6dd27cbb8cf/transformed/profileinstaller-1.3.0/AndroidManifest.xml:40:13-42:29
+93                <action android:name="androidx.profileinstaller.action.INSTALL_PROFILE" />
+93-->[androidx.profileinstaller:profileinstaller:1.3.0] /home/harry/.gradle/caches/8.13/transforms/529b0b031151effd9703c6dd27cbb8cf/transformed/profileinstaller-1.3.0/AndroidManifest.xml:41:17-91
+93-->[androidx.profileinstaller:profileinstaller:1.3.0] /home/harry/.gradle/caches/8.13/transforms/529b0b031151effd9703c6dd27cbb8cf/transformed/profileinstaller-1.3.0/AndroidManifest.xml:41:25-88
+94            </intent-filter>
+95            <intent-filter>
+95-->[androidx.profileinstaller:profileinstaller:1.3.0] /home/harry/.gradle/caches/8.13/transforms/529b0b031151effd9703c6dd27cbb8cf/transformed/profileinstaller-1.3.0/AndroidManifest.xml:43:13-45:29
+96                <action android:name="androidx.profileinstaller.action.SKIP_FILE" />
+96-->[androidx.profileinstaller:profileinstaller:1.3.0] /home/harry/.gradle/caches/8.13/transforms/529b0b031151effd9703c6dd27cbb8cf/transformed/profileinstaller-1.3.0/AndroidManifest.xml:44:17-85
+96-->[androidx.profileinstaller:profileinstaller:1.3.0] /home/harry/.gradle/caches/8.13/transforms/529b0b031151effd9703c6dd27cbb8cf/transformed/profileinstaller-1.3.0/AndroidManifest.xml:44:25-82
+97            </intent-filter>
+98            <intent-filter>
+98-->[androidx.profileinstaller:profileinstaller:1.3.0] /home/harry/.gradle/caches/8.13/transforms/529b0b031151effd9703c6dd27cbb8cf/transformed/profileinstaller-1.3.0/AndroidManifest.xml:46:13-48:29
+99                <action android:name="androidx.profileinstaller.action.SAVE_PROFILE" />
+99-->[androidx.profileinstaller:profileinstaller:1.3.0] /home/harry/.gradle/caches/8.13/transforms/529b0b031151effd9703c6dd27cbb8cf/transformed/profileinstaller-1.3.0/AndroidManifest.xml:47:17-88
+99-->[androidx.profileinstaller:profileinstaller:1.3.0] /home/harry/.gradle/caches/8.13/transforms/529b0b031151effd9703c6dd27cbb8cf/transformed/profileinstaller-1.3.0/AndroidManifest.xml:47:25-85
+100            </intent-filter>
+101            <intent-filter>
+101-->[androidx.profileinstaller:profileinstaller:1.3.0] /home/harry/.gradle/caches/8.13/transforms/529b0b031151effd9703c6dd27cbb8cf/transformed/profileinstaller-1.3.0/AndroidManifest.xml:49:13-51:29
+102                <action android:name="androidx.profileinstaller.action.BENCHMARK_OPERATION" />
+102-->[androidx.profileinstaller:profileinstaller:1.3.0] /home/harry/.gradle/caches/8.13/transforms/529b0b031151effd9703c6dd27cbb8cf/transformed/profileinstaller-1.3.0/AndroidManifest.xml:50:17-95
+102-->[androidx.profileinstaller:profileinstaller:1.3.0] /home/harry/.gradle/caches/8.13/transforms/529b0b031151effd9703c6dd27cbb8cf/transformed/profileinstaller-1.3.0/AndroidManifest.xml:50:25-92
+103            </intent-filter>
+104        </receiver>
+105    </application>
+106
+107</manifest>
