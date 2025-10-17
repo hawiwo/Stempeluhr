@@ -24,7 +24,7 @@ import java.util.*
 import kotlin.math.abs
 import kotlin.math.floor
 
-data class Stempel(val typ: String, val zeit: String)
+data class Stempel(val typ: String, val zeit: String, val homeoffice: Boolean = false)
 data class Einstellungen(
     var startwertMinuten: Int = 0,
     var standDatum: String = ""
@@ -136,6 +136,20 @@ fun HauptScreen(onOpenSettings: () -> Unit) {
         }
 
         Spacer(Modifier.height(24.dp))
+        var homeofficeAktiv by remember { mutableStateOf(false) }
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(vertical = 8.dp)
+        ) {
+            Checkbox(
+                checked = homeofficeAktiv,
+                onCheckedChange = { homeofficeAktiv = it }
+            )
+            Spacer(Modifier.width(8.dp))
+            Text("Homeoffice", fontSize = 18.sp)
+        }
+
         Text(statusText, fontSize = 20.sp)
         Spacer(Modifier.height(16.dp))
 
@@ -163,7 +177,7 @@ fun HauptScreen(onOpenSettings: () -> Unit) {
             onClick = {
                 if (!istEingestempelt) {
                     val jetzt = Date()
-                    addStempel("Start", stempelListe, gson, logFile)
+                    addStempel("Start", stempelListe, gson, logFile, homeofficeAktiv)
                     eingestempeltSeit = jetzt
                     statusText = "Eingestempelt seit ${format.format(jetzt).substring(11)}"
                     istEingestempelt = true
@@ -178,7 +192,7 @@ fun HauptScreen(onOpenSettings: () -> Unit) {
         Button(
             onClick = {
                 if (istEingestempelt) {
-                    addStempel("Ende", stempelListe, gson, logFile)
+                    addStempel("Ende", stempelListe, gson, logFile, homeofficeAktiv)
                     statusText = "Ausgestempelt"
                     istEingestempelt = false
                     eingestempeltSeit = null
@@ -190,11 +204,18 @@ fun HauptScreen(onOpenSettings: () -> Unit) {
     }
 }
 
-fun addStempel(typ: String, liste: MutableList<Stempel>, gson: Gson, file: File) {
+fun addStempel(
+    typ: String,
+    liste: MutableList<Stempel>,
+    gson: Gson,
+    file: File,
+    homeoffice: Boolean
+) {
     val zeit = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
-    liste.add(Stempel(typ, zeit))              // UI-State
-    file.writeText(gson.toJson(liste))         // Persistenz
+    liste.add(Stempel(typ, zeit, homeoffice))
+    file.writeText(gson.toJson(liste))
 }
+
 
 data class ZeitSumme(
     val heute: String,
