@@ -360,18 +360,35 @@ fun berechneAlleZeiten(
     aktiv: Boolean,
     context: Context
 ): ZeitSumme {
-    if (stempelListe.isEmpty()) return ZeitSumme("", "", "", "", "", "", "")
+    if (stempelListe.isEmpty())
+        return ZeitSumme("", "", "", "", "", "", "+0:00")
 
     val tagFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-    val heuteStr = tagFormat.format(Date())
     val jetzt = System.currentTimeMillis()
+    val heuteStr = tagFormat.format(Date())
     val cal = Calendar.getInstance()
 
     var gesamtHeute = 0L
     var gesamtWoche = 0L
     var gesamtMonat = 0L
     var gesamtJahr = 0L
+    var gesamtSeitStichtag = 0L
 
+    // --- Einstellungen laden
+    val settingsFile = File(context.filesDir, "settings.json")
+    var startwertMinuten = 0
+    var standDatum: Date? = null
+    if (settingsFile.exists()) {
+        try {
+            val einstellungen = Gson().fromJson(settingsFile.readText(), Einstellungen::class.java)
+            startwertMinuten = einstellungen.startwertMinuten
+            if (einstellungen.standDatum.isNotBlank()) {
+                standDatum = tagFormat.parse(einstellungen.standDatum)
+            }
+        } catch (_: Exception) {}
+    }
+
+    // --- Gruppiert nach Tag berechnen
     for ((datum, liste) in stempelListe.groupBy { it.zeit.substring(0, 10) }) {
         val starts = liste.filter { it.typ == "Start" }.mapNotNull { parseDateFlexible(it.zeit)?.time }
         val enden = liste.filter { it.typ == "Ende" }.mapNotNull { parseDateFlexible(it.zeit)?.time }
@@ -383,13 +400,15 @@ fun berechneAlleZeiten(
             if (diff > 0) sum += diff
         }
 
+        // Laufende Zeit addieren, falls aktiv und heute
         if (aktiv && datum == heuteStr && startZeit != null) {
             val diff = jetzt - startZeit.time
             if (diff > 0) sum += diff
         }
 
-        val d = tagFormat.parse(datum)!!
+        val d = tagFormat.parse(datum) ?: continue
         cal.time = d
+
         val jahr = cal.get(Calendar.YEAR)
         val woche = cal.get(Calendar.WEEK_OF_YEAR)
         val monat = cal.get(Calendar.MONTH)
@@ -401,37 +420,41 @@ fun berechneAlleZeiten(
             if (woche == calJetzt.get(Calendar.WEEK_OF_YEAR)) gesamtWoche += sum
         }
         if (datum == heuteStr) gesamtHeute += sum
-    }
 
-    val settingsFile = File(context.filesDir, "settings.json")
-    var startwertMinuten = 0
-    var standDatum = ""
-    if (settingsFile.exists()) {
-        try {
-            val einstellungen = Gson().fromJson(settingsFile.readText(), Einstellungen::class.java)
-            startwertMinuten = einstellungen.startwertMinuten
-            standDatum = einstellungen.standDatum
-        } catch (_: Exception) {
+        // falls der Stichtag aktiv ist, addiere nur, wenn Datum >= standDatum
+        if (standDatum == null || !d.before(standDatum)) {
+            gesamtSeitStichtag += sum
         }
     }
 
-    val gesamtJahrMinuten = gesamtJahr / 1000 / 60 + startwertMinuten
-
-    val calStart = Calendar.getInstance().apply {
-        set(Calendar.MONTH, Calendar.JANUARY)
-        set(Calendar.DAY_OF_MONTH, 1)
+    // --- Sollzeit ab Stichtag berechnen
+    var sollzeitMinuten = 0
+    if (standDatum != null) {
+        val calStart = Calendar.getInstance().apply { time = standDatum!! }
+        val calEnd = Calendar.getInstance()
+        while (calStart.before(calEnd) || tagFormat.format(calStart.time) == tagFormat.format(calEnd.time)) {
+            val tag = calStart.get(Calendar.DAY_OF_WEEK)
+            if (tag in Calendar.MONDAY..Calendar.FRIDAY) sollzeitMinuten += 8 * 60
+            calStart.add(Calendar.DAY_OF_YEAR, 1)
+        }
+    } else {
+        // falls kein Stichtag gesetzt, nimm Jahresbeginn
+        val calStart = Calendar.getInstance().apply {
+            set(Calendar.MONTH, Calendar.JANUARY)
+            set(Calendar.DAY_OF_MONTH, 1)
+        }
+        val calEnd = Calendar.getInstance()
+        while (calStart.before(calEnd) || tagFormat.format(calStart.time) == tagFormat.format(calEnd.time)) {
+            val tag = calStart.get(Calendar.DAY_OF_WEEK)
+            if (tag in Calendar.MONDAY..Calendar.FRIDAY) sollzeitMinuten += 8 * 60
+            calStart.add(Calendar.DAY_OF_YEAR, 1)
+        }
     }
-    val calEnd = Calendar.getInstance()
-    var arbeitstage = 0
-    while (calStart.before(calEnd) || tagFormat.format(calStart.time) == tagFormat.format(calEnd.time)) {
-        val tag = calStart.get(Calendar.DAY_OF_WEEK)
-        if (tag in Calendar.MONDAY..Calendar.FRIDAY) arbeitstage++
-        calStart.add(Calendar.DAY_OF_YEAR, 1)
-    }
 
-    val sollzeitMinuten = arbeitstage * 8 * 60
-    val diffMinuten = gesamtJahrMinuten - sollzeitMinuten
-    val ueberstundenText = formatMinutenAsText(diffMinuten.toInt())
+    // --- Überstunden ab Stichtag berechnen
+    val istMinuten = (gesamtSeitStichtag / 1000 / 60).toInt()
+    val diffMinuten = istMinuten + startwertMinuten - sollzeitMinuten
+    val ueberstundenText = formatMinutenAsText(diffMinuten)
 
     fun formatZeit(ms: Long): String {
         val minuten = ms / 1000 / 60
@@ -446,7 +469,7 @@ fun berechneAlleZeiten(
         monat = formatZeit(gesamtMonat),
         jahr = formatZeit(gesamtJahr),
         startwert = if (startwertMinuten != 0) formatMinutenAsText(startwertMinuten) else "",
-        standDatum = standDatum,
+        standDatum = standDatum?.let { tagFormat.format(it) } ?: "",
         ueberstunden = ueberstundenText
     )
 }
