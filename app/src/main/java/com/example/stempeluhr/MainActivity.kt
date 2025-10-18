@@ -25,6 +25,11 @@ import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.abs
 import kotlin.math.floor
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import android.widget.DatePicker
+import androidx.compose.ui.viewinterop.AndroidView
+
 
 data class Stempel(val typ: String, val zeit: String, val homeoffice: Boolean = false)
 
@@ -390,7 +395,31 @@ fun berechneAlleZeiten(
         ueberstunden = ueberstundenText
     )
 }
-
+@Composable
+fun SpinnerDatePicker(
+    label: String,
+    initialDate: Calendar = Calendar.getInstance(),
+    onDateSelected: (String) -> Unit
+) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(label, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+        AndroidView(factory = { context ->
+            DatePicker(context).apply {
+                calendarViewShown = false
+                spinnersShown = true
+                init(
+                    initialDate.get(Calendar.YEAR),
+                    initialDate.get(Calendar.MONTH),
+                    initialDate.get(Calendar.DAY_OF_MONTH)
+                ) { _, y, m, d ->
+                    val cal = Calendar.getInstance().apply { set(y, m, d) }
+                    val fmt = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
+                    onDateSelected(fmt.format(cal.time))
+                }
+            }
+        })
+    }
+}
 @Composable
 fun EinstellungenScreen(onClose: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -415,11 +444,14 @@ fun EinstellungenScreen(onClose: () -> Unit) {
     var statusText by remember { mutableStateOf("") }
     var statusColor by remember { mutableStateOf(secondaryColor) }
 
+    val scrollState = rememberScrollState()
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .statusBarsPadding()
-            .padding(16.dp),
+            .padding(16.dp)
+            .verticalScroll(scrollState),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text("Einstellungen & JSON-Dateien", fontSize = 22.sp, fontWeight = FontWeight.Bold)
@@ -453,6 +485,69 @@ fun EinstellungenScreen(onClose: () -> Unit) {
             textStyle = LocalTextStyle.current.copy(fontSize = 14.sp),
             singleLine = false
         )
+        Spacer(Modifier.height(24.dp))
+        Divider()
+        Spacer(Modifier.height(12.dp))
+        Text("Neuen Urlaub hinzufügen", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(24.dp))
+        Divider()
+        Spacer(Modifier.height(12.dp))
+        Text("Neuen Urlaub hinzufügen", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+
+        var vonDatum by remember { mutableStateOf("") }
+        var bisDatum by remember { mutableStateOf("") }
+        var tageBerechnet by remember { mutableStateOf(0) }
+
+        SpinnerDatePicker("Von", onDateSelected = { vonDatum = it })
+        Spacer(Modifier.height(8.dp))
+        SpinnerDatePicker("Bis", onDateSelected = { bisDatum = it })
+        Spacer(Modifier.height(12.dp))
+
+        Button(
+            onClick = {
+                try {
+                    val format = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
+                    val start = format.parse(vonDatum)
+                    val ende = format.parse(bisDatum)
+                    if (start != null && ende != null && !ende.before(start)) {
+                        var tage = 0
+                        val cal = java.util.Calendar.getInstance()
+                        cal.time = start
+                        while (!cal.time.after(ende)) {
+                            val tag = cal.get(java.util.Calendar.DAY_OF_WEEK)
+                            if (tag in java.util.Calendar.MONDAY..java.util.Calendar.FRIDAY) tage++
+                            cal.add(java.util.Calendar.DAY_OF_YEAR, 1)
+                        }
+                        tageBerechnet = tage
+
+                        val neuerUrlaub = Urlaubseintrag(vonDatum, bisDatum, tage)
+                        val type = object : com.google.gson.reflect.TypeToken<MutableList<Urlaubseintrag>>() {}.type
+                        val aktuelleListe: MutableList<Urlaubseintrag> =
+                            try { Gson().fromJson(urlaubText, type) ?: mutableListOf() }
+                            catch (_: Exception) { mutableListOf() }
+
+                        aktuelleListe.add(neuerUrlaub)
+                        val neuesJson = Gson().toJson(aktuelleListe)
+                        urlaubText = neuesJson
+                        urlaubFile.writeText(neuesJson)
+
+                        statusText = "Urlaub hinzugefügt: $tage Tage ✔"
+                        statusColor = primaryColor
+                    } else {
+                        statusText = "❌ Ungültiges Datum"
+                        statusColor = errorColor
+                    }
+                } catch (e: Exception) {
+                    statusText = "❌ Fehler: ${e.message}"
+                    statusColor = errorColor
+                }
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) { Text("Hinzufügen") }
+
+        if (tageBerechnet > 0) {
+            Text("Berechnet: $tageBerechnet Tage (Mo–Fr)", color = MaterialTheme.colorScheme.secondary)
+        }
 
         Spacer(Modifier.height(16.dp))
         if (statusText.isNotEmpty()) {
