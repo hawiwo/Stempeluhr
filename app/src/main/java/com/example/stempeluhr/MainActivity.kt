@@ -1,5 +1,6 @@
 package com.example.stempeluhr
 
+import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -23,17 +24,19 @@ import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.abs
 import kotlin.math.floor
+import android.os.Environment
 
 data class Stempel(val typ: String, val zeit: String, val homeoffice: Boolean = false)
 data class Einstellungen(
     var startwertMinuten: Int = 0,
-    var standDatum: String = ""
+    var standDatum: String = "",
+    var homeofficeAktiv: Boolean = false
 )
+
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Systemleisten korrekt berücksichtigen
         WindowCompat.setDecorFitsSystemWindows(window, true)
         setContent { StempeluhrApp() }
     }
@@ -54,29 +57,55 @@ fun HauptScreen(onOpenSettings: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val gson = remember { Gson() }
     val logFile = remember { File(context.filesDir, "stempel.json") }
+    val settingsFile = remember { File(context.filesDir, "settings.json") }
     val stempelListe = remember { mutableStateListOf<Stempel>() }
     val format = remember { SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()) }
 
     var statusText by remember { mutableStateOf("Noch nicht eingestempelt") }
     var istEingestempelt by remember { mutableStateOf(false) }
     var eingestempeltSeit by remember { mutableStateOf<Date?>(null) }
+    var homeofficeAktiv by remember { mutableStateOf(false) }
 
     var arbeitsdauerHeute by remember { mutableStateOf("") }
     var arbeitsdauerWoche by remember { mutableStateOf("") }
     var arbeitsdauerMonat by remember { mutableStateOf("") }
     var arbeitsdauerJahr by remember { mutableStateOf("") }
+    var ueberstundenText by remember { mutableStateOf("") }
     var startwertAnzeige by remember { mutableStateOf("") }
     var standDatumAnzeige by remember { mutableStateOf("") }
 
-    // 1) EINMALIG: JSON laden + Status herstellen (NICHT in der Composition schreiben)
+    // Homeoffice-Status laden
+    LaunchedEffect(Unit) {
+        if (settingsFile.exists()) {
+            try {
+                val jsonText = settingsFile.readText()
+                val map = Gson().fromJson<MutableMap<String, Any>>(jsonText, object : TypeToken<MutableMap<String, Any>>() {}.type)
+                homeofficeAktiv = (map["homeofficeAktiv"] as? Boolean) ?: false
+            } catch (_: Exception) {}
+        }
+    }
+
+    fun speichereHomeofficeStatus(aktiv: Boolean) {
+        try {
+            val jsonText = if (settingsFile.exists()) settingsFile.readText() else "{}"
+            val map = Gson().fromJson<MutableMap<String, Any>>(jsonText, object : TypeToken<MutableMap<String, Any>>() {}.type)
+                ?: mutableMapOf<String, Any>()
+            map["homeofficeAktiv"] = aktiv
+            settingsFile.writeText(Gson().toJson(map))
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    // JSON einlesen
     LaunchedEffect(Unit) {
         try {
             if (logFile.exists()) {
                 val text = logFile.readText()
                 val type = object : TypeToken<List<Stempel>>() {}.type
-                val geleseneListe: List<Stempel> = if (text.isNotBlank()) {
-                    try { Gson().fromJson(text, type) ?: emptyList() } catch (_: Exception) { emptyList() }
-                } else emptyList()
+                val geleseneListe: List<Stempel> =
+                    if (text.isNotBlank()) try { Gson().fromJson(text, type) ?: emptyList() } catch (_: Exception) { emptyList() }
+                    else emptyList()
                 stempelListe.clear()
                 stempelListe.addAll(geleseneListe)
             }
@@ -94,13 +123,12 @@ fun HauptScreen(onOpenSettings: () -> Unit) {
             }
         } catch (e: Exception) {
             e.printStackTrace()
-            // Fallback: leere Datei erzeugen
             logFile.writeText("[]")
             stempelListe.clear()
         }
     }
 
-    // 2) PERIODISCH: Zeiten neu berechnen (GENAU EINE Coroutine; bricht automatisch ab)
+    // Live-Aktualisierung
     LaunchedEffect(istEingestempelt, eingestempeltSeit, stempelListe.size) {
         while (isActive) {
             try {
@@ -111,10 +139,11 @@ fun HauptScreen(onOpenSettings: () -> Unit) {
                 arbeitsdauerJahr = zeiten.jahr
                 startwertAnzeige = zeiten.startwert
                 standDatumAnzeige = zeiten.standDatum
+                ueberstundenText = zeiten.ueberstunden
             } catch (e: Exception) {
                 e.printStackTrace()
             }
-            delay(60_000) // 1x/Minute reicht (zum Testen kann man 2_000 nehmen)
+            delay(60_000)
         }
     }
 
@@ -136,20 +165,21 @@ fun HauptScreen(onOpenSettings: () -> Unit) {
         }
 
         Spacer(Modifier.height(24.dp))
-        var homeofficeAktiv by remember { mutableStateOf(false) }
 
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(vertical = 8.dp)
-        ) {
+        // Homeoffice Checkbox
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Checkbox(
                 checked = homeofficeAktiv,
-                onCheckedChange = { homeofficeAktiv = it }
+                onCheckedChange = {
+                    homeofficeAktiv = it
+                    speichereHomeofficeStatus(it)
+                }
             )
             Spacer(Modifier.width(8.dp))
             Text("Homeoffice", fontSize = 18.sp)
         }
 
+        Spacer(Modifier.height(12.dp))
         Text(statusText, fontSize = 20.sp)
         Spacer(Modifier.height(16.dp))
 
@@ -159,6 +189,16 @@ fun HauptScreen(onOpenSettings: () -> Unit) {
             Text("Diesen Monat: $arbeitsdauerMonat", fontSize = 18.sp)
             Text("Dieses Jahr: $arbeitsdauerJahr", fontSize = 18.sp)
 
+            if (ueberstundenText.isNotEmpty()) {
+                val color = if (ueberstundenText.startsWith("-"))
+                    MaterialTheme.colorScheme.error
+                else
+                    MaterialTheme.colorScheme.primary
+                val label = if (ueberstundenText.startsWith("-")) "Minusstunden" else "Überstunden"
+                Text("$label: $ueberstundenText", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = color)
+            }
+
+            // 👇 dein neuer Block HIER hinein, nicht außerhalb!
             if (startwertAnzeige.isNotEmpty()) {
                 val datumText = if (standDatumAnzeige.isNotEmpty()) " ($standDatumAnzeige)" else ""
                 Text(
@@ -167,9 +207,8 @@ fun HauptScreen(onOpenSettings: () -> Unit) {
                     color = MaterialTheme.colorScheme.secondary
                 )
             }
-        } else {
-            Text("Noch keine Arbeitszeit erfasst", fontSize = 18.sp)
         }
+
 
         Spacer(Modifier.height(40.dp))
 
@@ -202,20 +241,14 @@ fun HauptScreen(onOpenSettings: () -> Unit) {
             enabled = istEingestempelt
         ) { Text("Ende", fontSize = 22.sp) }
     }
-}
+    }
 
-fun addStempel(
-    typ: String,
-    liste: MutableList<Stempel>,
-    gson: Gson,
-    file: File,
-    homeoffice: Boolean
-) {
+
+fun addStempel(typ: String, liste: MutableList<Stempel>, gson: Gson, file: File, homeoffice: Boolean) {
     val zeit = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
     liste.add(Stempel(typ, zeit, homeoffice))
     file.writeText(gson.toJson(liste))
 }
-
 
 data class ZeitSumme(
     val heute: String,
@@ -223,7 +256,8 @@ data class ZeitSumme(
     val monat: String,
     val jahr: String,
     val startwert: String,
-    val standDatum: String
+    val standDatum: String,
+    val ueberstunden: String
 )
 
 fun parseDateFlexible(s: String): Date? {
@@ -231,19 +265,16 @@ fun parseDateFlexible(s: String): Date? {
         SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()),
         SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
     )
-    for (f in formats) {
-        try { return f.parse(s) } catch (_: Exception) {}
-    }
+    for (f in formats) try { return f.parse(s) } catch (_: Exception) {}
     return null
 }
-
 fun berechneAlleZeiten(
     stempelListe: List<Stempel>,
     startZeit: Date?,
     aktiv: Boolean,
-    context: android.content.Context
+    context: Context
 ): ZeitSumme {
-    if (stempelListe.isEmpty()) return ZeitSumme("", "", "", "", "", "")
+    if (stempelListe.isEmpty()) return ZeitSumme("", "", "", "", "", "", "")
 
     val tagFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
     val heuteStr = tagFormat.format(Date())
@@ -255,6 +286,7 @@ fun berechneAlleZeiten(
     var gesamtMonat = 0L
     var gesamtJahr = 0L
 
+    // Gruppiere Stempel nach Datum
     for ((datum, liste) in stempelListe.groupBy { it.zeit.substring(0, 10) }) {
         val starts = liste.filter { it.typ == "Start" }.mapNotNull { parseDateFlexible(it.zeit)?.time }
         val enden = liste.filter { it.typ == "Ende" }.mapNotNull { parseDateFlexible(it.zeit)?.time }
@@ -265,7 +297,8 @@ fun berechneAlleZeiten(
             val diff = enden[i] - starts[i]
             if (diff > 0) sum += diff
         }
-        // laufende Zeit nur für heute addieren
+
+        // Laufende Zeit hinzufügen, falls gerade eingestempelt (nur heute)
         if (aktiv && datum == heuteStr && startZeit != null) {
             val diff = jetzt - startZeit.time
             if (diff > 0) sum += diff
@@ -298,8 +331,27 @@ fun berechneAlleZeiten(
         } catch (_: Exception) {}
     }
 
-    // Jahreswert inkl. Startwert (Minuten nur für Überstundendiff)
+    // Jahreswert in Minuten (inkl. Startwert)
     val gesamtJahrMinuten = gesamtJahr / 1000 / 60 + startwertMinuten
+
+    // Arbeitstage seit Jahresbeginn (Mo–Fr)
+    val calStart = Calendar.getInstance().apply {
+        set(Calendar.MONTH, Calendar.JANUARY)
+        set(Calendar.DAY_OF_MONTH, 1)
+    }
+    val calEnd = Calendar.getInstance()
+    var arbeitstage = 0
+    while (calStart.before(calEnd) || tagFormat.format(calStart.time) == tagFormat.format(calEnd.time)) {
+        val tag = calStart.get(Calendar.DAY_OF_WEEK)
+        if (tag in Calendar.MONDAY..Calendar.FRIDAY) arbeitstage++
+        calStart.add(Calendar.DAY_OF_YEAR, 1)
+    }
+
+    // Sollzeit (8 Stunden pro Arbeitstag)
+    val sollzeitMinuten = arbeitstage * 8 * 60
+    val diffMinuten = gesamtJahrMinuten - sollzeitMinuten
+
+    val ueberstundenText = formatMinutenAsText(diffMinuten.toInt())
 
     fun formatZeit(ms: Long): String {
         val minuten = ms / 1000 / 60
@@ -308,25 +360,26 @@ fun berechneAlleZeiten(
         return if (ms != 0L) "${stunden}h ${restMin}min" else ""
     }
 
-    // (optional) Überstunden könntest du hier wieder reinrechnen, falls gewünscht
-
     return ZeitSumme(
         heute = formatZeit(gesamtHeute),
         woche = formatZeit(gesamtWoche),
         monat = formatZeit(gesamtMonat),
-        jahr = formatZeit(gesamtJahr), // Wichtig: KEINE zusätzliche Multiplikation/Division
+        jahr = formatZeit(gesamtJahr),
         startwert = if (startwertMinuten != 0) formatMinutenAsText(startwertMinuten) else "",
-        standDatum = standDatum
+        standDatum = standDatum,
+        ueberstunden = ueberstundenText
     )
 }
 
 @Composable
 fun EinstellungenScreen(onClose: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
+
     val gson = remember { Gson() }
     val settingsFile = remember { File(context.filesDir, "settings.json") }
     val stempelFile = remember { File(context.filesDir, "stempel.json") }
 
+    // 👇 Diese Farben VORHER aus MaterialTheme holen (Composable-Kontext!)
     val primaryColor = MaterialTheme.colorScheme.primary
     val errorColor = MaterialTheme.colorScheme.error
     val secondaryColor = MaterialTheme.colorScheme.secondary
@@ -334,7 +387,7 @@ fun EinstellungenScreen(onClose: () -> Unit) {
     var settingsText by remember {
         mutableStateOf(
             if (settingsFile.exists()) settingsFile.readText()
-            else "{\n  \"startwertMinuten\": 0,\n  \"standDatum\": \"\"\n}"
+            else "{\n  \"startwertMinuten\": 0,\n  \"standDatum\": \"\",\n  \"homeofficeAktiv\": false\n}"
         )
     }
     var stempelText by remember { mutableStateOf(if (stempelFile.exists()) stempelFile.readText() else "[]") }
@@ -390,10 +443,12 @@ fun EinstellungenScreen(onClose: () -> Unit) {
                     gson.fromJson(settingsText, Einstellungen::class.java)
                     val type = object : TypeToken<List<Stempel>>() {}.type
                     gson.fromJson<List<Stempel>>(stempelText, type)
+
                     settingsFile.writeText(settingsText)
                     stempelFile.writeText(stempelText)
+
                     statusText = "Gespeichert ✔"
-                    statusColor = primaryColor
+                    statusColor = primaryColor   // 👈 vorher gepuffert, nicht direkt MaterialTheme im Lambda
                 } catch (e: Exception) {
                     statusText = "❌ Ungültiges JSON: ${e.message?.lineSequence()?.firstOrNull() ?: "Syntaxfehler"}"
                     statusColor = errorColor
@@ -403,7 +458,21 @@ fun EinstellungenScreen(onClose: () -> Unit) {
             Button(onClick = onClose) { Text("Schließen") }
         }
 
-        Spacer(Modifier.height(322.dp))
+        Spacer(Modifier.height(300.dp))
+
+        // 🔒 Backup-Button – Zugriff auf context außerhalb des Lambdas gepuffert
+        Button(
+            onClick = {
+                val meldung = backupDateien(context.applicationContext)
+                statusText = meldung
+                statusColor = primaryColor
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(60.dp)
+                .padding(bottom = 12.dp)
+        ) { Text("Backup erstellen") }
+/*
         Button(
             onClick = {
                 settingsFile.delete()
@@ -419,19 +488,10 @@ fun EinstellungenScreen(onClose: () -> Unit) {
         ) {
             Text("Reset – alle Daten löschen", color = MaterialTheme.colorScheme.onError)
         }
+        */
     }
 }
 
-// Hilfsfunktionen
-fun parseZeitToMinuten(text: String): Int {
-    val regex = Regex("(-?)(\\d+):(\\d+)")
-    val match = regex.find(text.trim()) ?: return 0
-    val neg = match.groupValues[1] == "-"
-    val stunden = match.groupValues[2].toInt()
-    val minuten = match.groupValues[3].toInt()
-    val total = stunden * 60 + minuten
-    return if (neg) -total else total
-}
 
 fun formatMinutenAsText(minuten: Int): String {
     val neg = minuten < 0
@@ -439,4 +499,24 @@ fun formatMinutenAsText(minuten: Int): String {
     val h = absMin / 60
     val m = absMin % 60
     return (if (neg) "-" else "+") + "%d:%02d".format(h, m)
+}
+fun backupDateien(context: Context): String {
+    val quelleDir = context.filesDir
+    val downloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+    val zielDir = File(downloads, "StempeluhrBackup")
+    if (!zielDir.exists()) zielDir.mkdirs()
+
+    val zeitstempel = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.getDefault()).format(Date())
+    val stempelFile = File(quelleDir, "stempel.json")
+    val settingsFile = File(quelleDir, "settings.json")
+
+    return try {
+        if (stempelFile.exists())
+            stempelFile.copyTo(File(zielDir, "stempel_$zeitstempel.json"), overwrite = true)
+        if (settingsFile.exists())
+            settingsFile.copyTo(File(zielDir, "settings_$zeitstempel.json"), overwrite = true)
+        "Backup gespeichert unter: ${zielDir.path}"
+    } catch (e: Exception) {
+        "Fehler beim Backup: ${e.message}"
+    }
 }

@@ -20,66 +20,40 @@ class ArbeitszeitWidget : AppWidgetProvider() {
         }
     }
 
-    companion object {
-        fun updateWidget(context: Context, manager: AppWidgetManager, widgetId: Int) {
-            val views = RemoteViews(context.packageName, R.layout.widget_arbeitszeit)
-            views.setTextViewText(R.id.textViewArbeitszeit, "Lade...")
+    private fun updateWidget(context: Context, appWidgetManager: AppWidgetManager, widgetId: Int) {
+        val gson = Gson()
+        val logFile = File(context.filesDir, "stempel.json")
+        val format = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
 
-            val zeit = berechneTageszeit(context)
-            views.setTextViewText(R.id.textViewArbeitszeit, "Heute: $zeit")
+        var text = "Noch keine Daten"
+        var homeofficeHinweis = ""
 
-            // Reload-Intent (auf Widget tippen → aktualisiert)
-            val intent = Intent(context, ArbeitszeitWidget::class.java).apply {
-                action = AppWidgetManager.ACTION_APPWIDGET_UPDATE
-                putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, intArrayOf(widgetId))
-            }
-            val pending = PendingIntent.getBroadcast(
-                context, widgetId, intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-            views.setOnClickPendingIntent(R.id.textViewArbeitszeit, pending)
-
-            manager.updateAppWidget(widgetId, views)
-        }
-
-        private fun berechneTageszeit(context: Context): String {
-            val logFile = File(context.filesDir, "stempel.json")
-            if (!logFile.exists()) return "0h 00min"
-
-            val gson = Gson()
-            val type = object : TypeToken<List<Stempel>>() {}.type
-            val stempelListe: List<Stempel> = try {
-                gson.fromJson(logFile.readText(), type)
+        if (logFile.exists()) {
+            try {
+                val type = object : TypeToken<List<Stempel>>() {}.type
+                val stempelListe: List<Stempel> = gson.fromJson(logFile.readText(), type) ?: emptyList()
+                if (stempelListe.isNotEmpty()) {
+                    val letzter = stempelListe.last()
+                    val zeiten = berechneAlleZeiten(stempelListe, null, false, context)
+                    text = "Heute: ${zeiten.heute.ifEmpty { "–" }}"
+                    if (letzter.homeoffice) {
+                        homeofficeHinweis = "Du bist im Homeoffice"
+                    }
+                }
             } catch (e: Exception) {
-                return "--"
+                text = "Fehler beim Lesen"
             }
-
-            val format = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-            val heute = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-            val jetzt = System.currentTimeMillis()
-
-            val starts = stempelListe.filter { it.typ == "Start" && it.zeit.startsWith(heute) }
-                .mapNotNull { format.parse(it.zeit)?.time }
-            val enden = stempelListe.filter { it.typ == "Ende" && it.zeit.startsWith(heute) }
-                .mapNotNull { format.parse(it.zeit)?.time }
-
-            var sum = 0L
-            val n = minOf(starts.size, enden.size)
-            for (i in 0 until n) {
-                val diff = enden[i] - starts[i]
-                if (diff > 0) sum += diff
-            }
-
-            // falls noch eingestempelt
-            if (starts.size > enden.size && starts.isNotEmpty()) {
-                sum += jetzt - starts.last()
-            }
-
-            val minuten = sum / 1000 / 60
-            val stunden = minuten / 60
-            val rest = minuten % 60
-            return "${stunden}h ${rest}min"
         }
+
+        val views = RemoteViews(context.packageName, R.layout.arbeitszeit_widget)
+        views.setTextViewText(R.id.textViewArbeitszeit, text)
+        views.setTextViewText(R.id.textViewHomeoffice, homeofficeHinweis)
+
+        // Tap → öffnet App
+        val intent = Intent(context, MainActivity::class.java)
+        val pendingIntent = PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_IMMUTABLE)
+        views.setOnClickPendingIntent(R.id.widget_root, pendingIntent)
+
+        appWidgetManager.updateAppWidget(widgetId, views)
     }
 }
-
