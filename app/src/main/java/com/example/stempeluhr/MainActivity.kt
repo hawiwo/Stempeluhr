@@ -6,6 +6,8 @@ import android.os.Environment
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
@@ -25,12 +27,10 @@ import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.abs
 import kotlin.math.floor
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import android.widget.DatePicker
-import androidx.compose.ui.viewinterop.AndroidView
 
-
+// ----------------------------------------------------------
+// Datenklassen
+// ----------------------------------------------------------
 data class Stempel(val typ: String, val zeit: String, val homeoffice: Boolean = false)
 
 data class Einstellungen(
@@ -45,6 +45,26 @@ data class Urlaubseintrag(
     val tage: Int
 )
 
+// ----------------------------------------------------------
+// Hilfsfunktionen
+// ----------------------------------------------------------
+fun formatDateYMD(millis: Long?): String {
+    if (millis == null) return ""
+    val fmt = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+    return fmt.format(Date(millis))
+}
+
+fun formatMinutenAsText(minuten: Int): String {
+    val neg = minuten < 0
+    val absMin = abs(minuten)
+    val h = absMin / 60
+    val m = absMin % 60
+    return (if (neg) "-" else "+") + "%d:%02d".format(h, m)
+}
+
+// ----------------------------------------------------------
+// Hauptaktivität
+// ----------------------------------------------------------
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -53,6 +73,9 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+// ----------------------------------------------------------
+// Haupt-App-Struktur
+// ----------------------------------------------------------
 @Composable
 fun StempeluhrApp() {
     var zeigeEinstellungen by remember { mutableStateOf(false) }
@@ -63,6 +86,9 @@ fun StempeluhrApp() {
     }
 }
 
+// ----------------------------------------------------------
+// Hauptansicht (Zeiterfassung)
+// ----------------------------------------------------------
 @Composable
 fun HauptScreen(onOpenSettings: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -96,17 +122,23 @@ fun HauptScreen(onOpenSettings: () -> Unit) {
         if (settingsFile.exists()) {
             try {
                 val jsonText = settingsFile.readText()
-                val map = Gson().fromJson<MutableMap<String, Any>>(jsonText, object : TypeToken<MutableMap<String, Any>>() {}.type)
+                val map = Gson().fromJson<MutableMap<String, Any>>(
+                    jsonText,
+                    object : TypeToken<MutableMap<String, Any>>() {}.type
+                )
                 homeofficeAktiv = (map["homeofficeAktiv"] as? Boolean) ?: false
-            } catch (_: Exception) {}
+            } catch (_: Exception) {
+            }
         }
     }
 
     fun speichereHomeofficeStatus(aktiv: Boolean) {
         try {
             val jsonText = if (settingsFile.exists()) settingsFile.readText() else "{}"
-            val map = Gson().fromJson<MutableMap<String, Any>>(jsonText, object : TypeToken<MutableMap<String, Any>>() {}.type)
-                ?: mutableMapOf<String, Any>()
+            val map = Gson().fromJson<MutableMap<String, Any>>(
+                jsonText,
+                object : TypeToken<MutableMap<String, Any>>() {}.type
+            ) ?: mutableMapOf()
             map["homeofficeAktiv"] = aktiv
             settingsFile.writeText(Gson().toJson(map))
         } catch (e: Exception) {
@@ -114,15 +146,18 @@ fun HauptScreen(onOpenSettings: () -> Unit) {
         }
     }
 
-    // JSON einlesen
+    // JSON laden
     LaunchedEffect(Unit) {
         try {
             if (logFile.exists()) {
                 val text = logFile.readText()
                 val type = object : TypeToken<List<Stempel>>() {}.type
                 val geleseneListe: List<Stempel> =
-                    if (text.isNotBlank()) try { Gson().fromJson(text, type) ?: emptyList() } catch (_: Exception) { emptyList() }
-                    else emptyList()
+                    if (text.isNotBlank()) try {
+                        Gson().fromJson(text, type) ?: emptyList()
+                    } catch (_: Exception) {
+                        emptyList()
+                    } else emptyList()
                 stempelListe.clear()
                 stempelListe.addAll(geleseneListe)
             }
@@ -134,7 +169,8 @@ fun HauptScreen(onOpenSettings: () -> Unit) {
                     val liste: List<Urlaubseintrag> = Gson().fromJson(json, type)
                     urlaubGenommen = liste.sumOf { it.tage }
                     urlaubVerbleibend = urlaubGesamt - urlaubGenommen
-                } catch (_: Exception) {}
+                } catch (_: Exception) {
+                }
             }
 
             if (stempelListe.isNotEmpty()) {
@@ -159,7 +195,8 @@ fun HauptScreen(onOpenSettings: () -> Unit) {
     LaunchedEffect(istEingestempelt, eingestempeltSeit, stempelListe.size) {
         while (isActive) {
             try {
-                val zeiten = berechneAlleZeiten(stempelListe, eingestempeltSeit, istEingestempelt, context)
+                val zeiten =
+                    berechneAlleZeiten(stempelListe, eingestempeltSeit, istEingestempelt, context)
                 arbeitsdauerHeute = zeiten.heute
                 arbeitsdauerWoche = zeiten.woche
                 arbeitsdauerMonat = zeiten.monat
@@ -222,12 +259,19 @@ fun HauptScreen(onOpenSettings: () -> Unit) {
                         MaterialTheme.colorScheme.error
                     else
                         MaterialTheme.colorScheme.primary
-                    val label = if (ueberstundenText.startsWith("-")) "Minusstunden" else "Überstunden"
-                    Text("$label: $ueberstundenText", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = color)
+                    val label =
+                        if (ueberstundenText.startsWith("-")) "Minusstunden" else "Überstunden"
+                    Text(
+                        "$label: $ueberstundenText",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = color
+                    )
                 }
 
                 if (startwertAnzeige.isNotEmpty()) {
-                    val datumText = if (standDatumAnzeige.isNotEmpty()) " ($standDatumAnzeige)" else ""
+                    val datumText =
+                        if (standDatumAnzeige.isNotEmpty()) " ($standDatumAnzeige)" else ""
                     Text(
                         "(inkl. Startwert $startwertAnzeige$datumText)",
                         fontSize = 16.sp,
@@ -237,7 +281,11 @@ fun HauptScreen(onOpenSettings: () -> Unit) {
 
                 Spacer(Modifier.height(16.dp))
                 Text("Urlaub: $urlaubGenommen / $urlaubGesamt Tage genommen", fontSize = 18.sp)
-                Text("Verbleibend: $urlaubVerbleibend Tage", fontSize = 16.sp, color = MaterialTheme.colorScheme.secondary)
+                Text(
+                    "Verbleibend: $urlaubVerbleibend Tage",
+                    fontSize = 16.sp,
+                    color = MaterialTheme.colorScheme.secondary
+                )
             }
         }
 
@@ -248,7 +296,8 @@ fun HauptScreen(onOpenSettings: () -> Unit) {
                         val jetzt = Date()
                         addStempel("Start", stempelListe, gson, logFile, homeofficeAktiv)
                         eingestempeltSeit = jetzt
-                        statusText = "Eingestempelt seit ${format.format(jetzt).substring(11)}"
+                        statusText =
+                            "Eingestempelt seit ${format.format(jetzt).substring(11)}"
                         istEingestempelt = true
                     }
                 },
@@ -274,6 +323,9 @@ fun HauptScreen(onOpenSettings: () -> Unit) {
     }
 }
 
+// ----------------------------------------------------------
+// Berechnung / Stempel
+// ----------------------------------------------------------
 fun addStempel(typ: String, liste: MutableList<Stempel>, gson: Gson, file: File, homeoffice: Boolean) {
     val zeit = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
     liste.add(Stempel(typ, zeit, homeoffice))
@@ -295,7 +347,10 @@ fun parseDateFlexible(s: String): Date? {
         SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()),
         SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
     )
-    for (f in formats) try { return f.parse(s) } catch (_: Exception) {}
+    for (f in formats) try {
+        return f.parse(s)
+    } catch (_: Exception) {
+    }
     return null
 }
 
@@ -356,7 +411,8 @@ fun berechneAlleZeiten(
             val einstellungen = Gson().fromJson(settingsFile.readText(), Einstellungen::class.java)
             startwertMinuten = einstellungen.startwertMinuten
             standDatum = einstellungen.standDatum
-        } catch (_: Exception) {}
+        } catch (_: Exception) {
+        }
     }
 
     val gesamtJahrMinuten = gesamtJahr / 1000 / 60 + startwertMinuten
@@ -375,7 +431,6 @@ fun berechneAlleZeiten(
 
     val sollzeitMinuten = arbeitstage * 8 * 60
     val diffMinuten = gesamtJahrMinuten - sollzeitMinuten
-
     val ueberstundenText = formatMinutenAsText(diffMinuten.toInt())
 
     fun formatZeit(ms: Long): String {
@@ -395,31 +450,11 @@ fun berechneAlleZeiten(
         ueberstunden = ueberstundenText
     )
 }
-@Composable
-fun SpinnerDatePicker(
-    label: String,
-    initialDate: Calendar = Calendar.getInstance(),
-    onDateSelected: (String) -> Unit
-) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(label, fontSize = 16.sp, fontWeight = FontWeight.Medium)
-        AndroidView(factory = { context ->
-            DatePicker(context).apply {
-                calendarViewShown = false
-                spinnersShown = true
-                init(
-                    initialDate.get(Calendar.YEAR),
-                    initialDate.get(Calendar.MONTH),
-                    initialDate.get(Calendar.DAY_OF_MONTH)
-                ) { _, y, m, d ->
-                    val cal = Calendar.getInstance().apply { set(y, m, d) }
-                    val fmt = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
-                    onDateSelected(fmt.format(cal.time))
-                }
-            }
-        })
-    }
-}
+
+// ----------------------------------------------------------
+// Einstellungsseite mit Material3-Kalendern
+// ----------------------------------------------------------
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EinstellungenScreen(onClose: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -446,6 +481,22 @@ fun EinstellungenScreen(onClose: () -> Unit) {
 
     val scrollState = rememberScrollState()
 
+    // bestehende Urlaubsliste laden
+    val urlaubsliste = remember {
+        mutableStateListOf<Urlaubseintrag>().apply {
+            if (urlaubFile.exists()) {
+                try {
+                    val type = object : TypeToken<List<Urlaubseintrag>>() {}.type
+                    val daten: List<Urlaubseintrag> =
+                        Gson().fromJson(urlaubFile.readText(), type) ?: emptyList()
+                    addAll(daten.sortedBy { it.von })
+                } catch (_: Exception) {
+                }
+            }
+        }
+    }
+
+    // -------- Layout --------
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -485,49 +536,79 @@ fun EinstellungenScreen(onClose: () -> Unit) {
             textStyle = LocalTextStyle.current.copy(fontSize = 14.sp),
             singleLine = false
         )
-        Spacer(Modifier.height(24.dp))
-        Divider()
-        Spacer(Modifier.height(12.dp))
-        Text("Neuen Urlaub hinzufügen", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+
         Spacer(Modifier.height(24.dp))
         Divider()
         Spacer(Modifier.height(12.dp))
         Text("Neuen Urlaub hinzufügen", fontSize = 18.sp, fontWeight = FontWeight.Bold)
 
+        // Kalenderauswahl
         var vonDatum by remember { mutableStateOf("") }
         var bisDatum by remember { mutableStateOf("") }
         var tageBerechnet by remember { mutableStateOf(0) }
 
-        SpinnerDatePicker("Von", onDateSelected = { vonDatum = it })
-        Spacer(Modifier.height(8.dp))
-        SpinnerDatePicker("Bis", onDateSelected = { bisDatum = it })
+        var showVonPicker by remember { mutableStateOf(false) }
+        var showBisPicker by remember { mutableStateOf(false) }
+
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            OutlinedButton(onClick = { showVonPicker = true }, modifier = Modifier.weight(1f)) {
+                Text(if (vonDatum.isEmpty()) "Von: Datum wählen" else "Von: $vonDatum")
+            }
+            OutlinedButton(onClick = { showBisPicker = true }, modifier = Modifier.weight(1f)) {
+                Text(if (bisDatum.isEmpty()) "Bis: Datum wählen" else "Bis: $bisDatum")
+            }
+        }
+
+        if (showVonPicker) {
+            val state = rememberDatePickerState()
+            DatePickerDialog(
+                onDismissRequest = { showVonPicker = false },
+                confirmButton = {
+                    TextButton(onClick = {
+                        vonDatum = formatDateYMD(state.selectedDateMillis)
+                        showVonPicker = false
+                    }) { Text("OK") }
+                },
+                dismissButton = { TextButton(onClick = { showVonPicker = false }) { Text("Abbrechen") } }
+            ) { DatePicker(state = state) }
+        }
+
+        if (showBisPicker) {
+            val state = rememberDatePickerState()
+            DatePickerDialog(
+                onDismissRequest = { showBisPicker = false },
+                confirmButton = {
+                    TextButton(onClick = {
+                        bisDatum = formatDateYMD(state.selectedDateMillis)
+                        showBisPicker = false
+                    }) { Text("OK") }
+                },
+                dismissButton = { TextButton(onClick = { showBisPicker = false }) { Text("Abbrechen") } }
+            ) { DatePicker(state = state) }
+        }
+
         Spacer(Modifier.height(12.dp))
 
         Button(
             onClick = {
                 try {
-                    val format = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
+                    val format = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
                     val start = format.parse(vonDatum)
                     val ende = format.parse(bisDatum)
                     if (start != null && ende != null && !ende.before(start)) {
                         var tage = 0
-                        val cal = java.util.Calendar.getInstance()
+                        val cal = Calendar.getInstance()
                         cal.time = start
                         while (!cal.time.after(ende)) {
-                            val tag = cal.get(java.util.Calendar.DAY_OF_WEEK)
-                            if (tag in java.util.Calendar.MONDAY..java.util.Calendar.FRIDAY) tage++
-                            cal.add(java.util.Calendar.DAY_OF_YEAR, 1)
+                            val tag = cal.get(Calendar.DAY_OF_WEEK)
+                            if (tag in Calendar.MONDAY..Calendar.FRIDAY) tage++
+                            cal.add(Calendar.DAY_OF_YEAR, 1)
                         }
                         tageBerechnet = tage
 
                         val neuerUrlaub = Urlaubseintrag(vonDatum, bisDatum, tage)
-                        val type = object : com.google.gson.reflect.TypeToken<MutableList<Urlaubseintrag>>() {}.type
-                        val aktuelleListe: MutableList<Urlaubseintrag> =
-                            try { Gson().fromJson(urlaubText, type) ?: mutableListOf() }
-                            catch (_: Exception) { mutableListOf() }
-
-                        aktuelleListe.add(neuerUrlaub)
-                        val neuesJson = Gson().toJson(aktuelleListe)
+                        urlaubsliste.add(neuerUrlaub)
+                        val neuesJson = Gson().toJson(urlaubsliste)
                         urlaubText = neuesJson
                         urlaubFile.writeText(neuesJson)
 
@@ -550,11 +631,30 @@ fun EinstellungenScreen(onClose: () -> Unit) {
         }
 
         Spacer(Modifier.height(16.dp))
-        if (statusText.isNotEmpty()) {
-            Text(statusText, color = statusColor)
-            Spacer(Modifier.height(8.dp))
+        Divider()
+        Spacer(Modifier.height(12.dp))
+
+        // Urlaubsliste anzeigen
+        Text("Gespeicherte Urlaube", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(8.dp))
+
+        if (urlaubsliste.isEmpty()) {
+            Text("Keine Einträge", color = MaterialTheme.colorScheme.secondary)
+        } else {
+            urlaubsliste.sortedBy { it.von }.forEach {
+                Text(
+                    "📅 ${it.von} – ${it.bis} · ${it.tage} Tage",
+                    fontSize = 16.sp,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
         }
 
+        Spacer(Modifier.height(24.dp))
+        Divider()
+        Spacer(Modifier.height(12.dp))
+
+        // JSON speichern / schließen
         Row(
             horizontalArrangement = Arrangement.SpaceEvenly,
             modifier = Modifier.fillMaxWidth()
@@ -574,7 +674,8 @@ fun EinstellungenScreen(onClose: () -> Unit) {
                     statusText = "Gespeichert ✔"
                     statusColor = primaryColor
                 } catch (e: Exception) {
-                    statusText = "❌ Ungültiges JSON: ${e.message?.lineSequence()?.firstOrNull() ?: "Syntaxfehler"}"
+                    statusText =
+                        "❌ Ungültiges JSON: ${e.message?.lineSequence()?.firstOrNull() ?: "Syntaxfehler"}"
                     statusColor = errorColor
                 }
             }) { Text("Speichern") }
@@ -592,17 +693,16 @@ fun EinstellungenScreen(onClose: () -> Unit) {
             },
             modifier = Modifier.fillMaxWidth().height(60.dp)
         ) { Text("Backup erstellen") }
+
+        Spacer(Modifier.height(12.dp))
+        if (statusText.isNotEmpty()) Text(statusText, color = statusColor)
     }
 }
 
-fun formatMinutenAsText(minuten: Int): String {
-    val neg = minuten < 0
-    val absMin = abs(minuten)
-    val h = absMin / 60
-    val m = absMin % 60
-    return (if (neg) "-" else "+") + "%d:%02d".format(h, m)
-}
 
+// ----------------------------------------------------------
+// Backup
+// ----------------------------------------------------------
 fun backupDateien(context: Context): String {
     val quelleDir = context.filesDir
     val downloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
