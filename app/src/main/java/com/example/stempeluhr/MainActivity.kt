@@ -66,6 +66,18 @@ fun formatMinutenAsText(minuten: Int): String {
 // Hauptaktivität
 // ----------------------------------------------------------
 class MainActivity : ComponentActivity() {
+    /* Logcat debug
+        override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        WindowCompat.setDecorFitsSystemWindows(window, true)
+
+        // 👇 Testlauf
+        testBerechnung(this)
+
+        setContent { StempeluhrApp() }
+    }
+    */
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, true)
@@ -254,6 +266,46 @@ fun HauptScreen(onOpenSettings: () -> Unit) {
                 Text("Diesen Monat: $arbeitsdauerMonat", fontSize = 18.sp)
                 Text("Dieses Jahr: $arbeitsdauerJahr", fontSize = 18.sp)
 
+                // Fortschrittsanzeige für den Tag
+                val regex = Regex("(\\d+)h\\s*(\\d+)?min?")
+                val match = regex.find(arbeitsdauerHeute)
+                val stunden = match?.groupValues?.get(1)?.toIntOrNull() ?: 0
+                val minuten = match?.groupValues?.get(2)?.toIntOrNull() ?: 0
+                val gesamtMinuten = stunden * 60 + minuten
+                val fortschritt = (gesamtMinuten / 480f).coerceIn(0f, 1f) // 480 Minuten = 8 Stunden
+
+                Spacer(Modifier.height(12.dp))
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(150.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(
+                        progress = fortschritt,
+                        strokeWidth = 12.dp,
+                        modifier = Modifier.size(120.dp)
+                    )
+                    Text(
+                        text = String.format(
+                            "%.0f%%",
+                            fortschritt * 100
+                        ),
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Heute gearbeitet: ${arbeitsdauerHeute} von 8h",
+                    fontSize = 16.sp,
+                    color = MaterialTheme.colorScheme.secondary
+                )
+                Spacer(Modifier.height(12.dp))
+
+
                 if (ueberstundenText.isNotEmpty()) {
                     val color = if (ueberstundenText.startsWith("-"))
                         MaterialTheme.colorScheme.error
@@ -353,7 +405,348 @@ fun parseDateFlexible(s: String): Date? {
     }
     return null
 }
+//----------------------------------------------------------------------------------------------------
+/**
+ * Berechnet alle relevanten Zeiträume basierend auf der Stempelliste
+ * Mit verbesserter Unterstützung für Datumsüberschreitungen/Nachtschichten
+ */
+fun berechneAlleZeiten(
+    stempelListe: List<Stempel>,
+    startZeit: Date?,
+    aktiv: Boolean,
+    context: Context
+): ZeitSumme {
+    if (stempelListe.isEmpty())
+        return ZeitSumme("", "", "", "", "", "", "+0:00")
 
+    val tagFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+    val jetzt = System.currentTimeMillis()
+    val heuteStr = tagFormat.format(Date(jetzt))
+    val jetztDate = Date(jetzt)
+
+    // --- Einstellungen laden
+    val (startwertMinuten, standDatum) = ladeEinstellungen(context, tagFormat)
+
+    // --- Stichtag am Wochenende auf Montag verschieben
+    val korrigierterStichtag = korrigiereWochenenden(standDatum)
+
+    // --- Stempel sortieren und zu Paaren kombinieren
+    val zeitpaare = erzeugeZeitpaare(stempelListe, startZeit, aktiv, jetztDate)
+
+    // --- Zeiten pro Tag berechnen (mit Berücksichtigung von Datumsübergängen)
+    val tageszuordnung = berechneTageszuordnung(zeitpaare, tagFormat)
+
+    // --- Zeitberechnungen für verschiedene Zeiträume
+    val zeiten = berechneZeitraeume(tageszuordnung, tagFormat, korrigierterStichtag)
+
+    // --- Sollzeit und Überstunden berechnen
+    val (gesamtSeitStichtag, ueberstundenText) = berechneSollzeitUndUeberstunden(
+        zeiten.seitStichtag,
+        korrigierterStichtag,
+        startwertMinuten
+    )
+
+    // Ergebnis-Objekt erstellen
+    return ZeitSumme(
+        heute = formatZeit(zeiten.heute),
+        woche = formatZeit(zeiten.woche),
+        monat = formatZeit(zeiten.monat),
+        jahr = formatZeit(zeiten.jahr),
+        startwert = if (startwertMinuten != 0) formatMinutenAsText(startwertMinuten) else "",
+        standDatum = korrigierterStichtag?.let { tagFormat.format(it) } ?: "",
+        ueberstunden = ueberstundenText
+    )
+}
+
+/**
+ * Lädt Einstellungen aus der settings.json Datei
+ */
+private fun ladeEinstellungen(context: Context, tagFormat: SimpleDateFormat): Pair<Int, Date?> {
+    val settingsFile = File(context.filesDir, "settings.json")
+    var startwertMinuten = 0
+    var standDatum: Date? = null
+
+    if (settingsFile.exists()) {
+        try {
+            val einstellungen = Gson().fromJson(settingsFile.readText(), Einstellungen::class.java)
+            startwertMinuten = einstellungen.startwertMinuten
+            if (einstellungen.standDatum.isNotBlank()) {
+                standDatum = tagFormat.parse(einstellungen.standDatum)
+            }
+        } catch (e: Exception) {
+            //Log.e("ZeitErfassung", "Fehler beim Laden der Einstellungen", e)
+        }
+    }
+
+    return Pair(startwertMinuten, standDatum)
+}
+
+/**
+ * Wenn der Stichtag auf ein Wochenende fällt, auf Montag verschieben
+ */
+private fun korrigiereWochenenden(standDatum: Date?): Date? {
+    if (standDatum == null) return null
+
+    val calTmp = Calendar.getInstance().apply { time = standDatum }
+    when (calTmp.get(Calendar.DAY_OF_WEEK)) {
+        Calendar.SATURDAY -> calTmp.add(Calendar.DAY_OF_YEAR, 2)
+        Calendar.SUNDAY -> calTmp.add(Calendar.DAY_OF_YEAR, 1)
+    }
+    return calTmp.time
+}
+
+/**
+ * Erzeugt zeitlich geordnete Start-Ende-Paare aus der Stempelliste
+ */
+private fun erzeugeZeitpaare(
+    stempelListe: List<Stempel>,
+    startZeit: Date?,
+    aktiv: Boolean,
+    jetztDate: Date
+): List<Pair<Date, Date>> {
+    // Stempel sortieren
+    val sortierteStempel = stempelListe.mapNotNull { stempel ->
+        val zeit = parseDateFlexible(stempel.zeit)
+        if (zeit != null) Pair(zeit, stempel.typ) else null
+    }.sortedBy { it.first.time }
+
+    // Start/Ende-Paare bilden
+    val zeitpaare = mutableListOf<Pair<Date, Date>>()
+    var aktuellerStart: Date? = null
+
+    for ((zeitpunkt, typ) in sortierteStempel) {
+        when (typ) {
+            "Start" -> {
+                // Falls ein vorheriger Start existiert, ignorieren oder optional loggen
+                aktuellerStart = zeitpunkt
+            }
+            "Ende" -> {
+                if (aktuellerStart != null) {
+                    if (aktuellerStart.time < zeitpunkt.time) {
+                        zeitpaare.add(Pair(aktuellerStart!!, zeitpunkt))
+                    }
+                    aktuellerStart = null
+                }
+                // Ende ohne Start ignorieren oder optional loggen
+            }
+        }
+    }
+
+    // Aktuell laufende Zeit hinzufügen, wenn aktiv
+    if (aktiv && aktuellerStart != null && startZeit != null) {
+        zeitpaare.add(Pair(startZeit, jetztDate))
+    }
+
+    return zeitpaare
+}
+
+/**
+ * Berechnet Zeiträume nach Tagen, auch bei Datumsüberschreitungen
+ */
+private fun berechneTageszuordnung(
+    zeitpaare: List<Pair<Date, Date>>,
+    tagFormat: SimpleDateFormat
+): Map<String, Long> {
+    val tageszuordnung = mutableMapOf<String, Long>()
+
+    for ((start, ende) in zeitpaare) {
+        val startDatum = tagFormat.format(start)
+        val endeDatum = tagFormat.format(ende)
+
+        // Fall 1: Starten und Enden am selben Tag
+        if (startDatum == endeDatum) {
+            val zeitDauer = ende.time - start.time
+            tageszuordnung[startDatum] = (tageszuordnung[startDatum] ?: 0L) + zeitDauer
+        }
+        // Fall 2: Datumsüberschreitung
+        else {
+            // Hilfskalender für Mitternachtsberechnung
+            val mitternachtCal = Calendar.getInstance().apply {
+                time = start
+                add(Calendar.DAY_OF_YEAR, 1)
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }
+
+            // Zeit vom Start bis Mitternacht
+            val startBisMitternacht = mitternachtCal.timeInMillis - start.time
+            tageszuordnung[startDatum] = (tageszuordnung[startDatum] ?: 0L) + startBisMitternacht
+
+            // Für mehrtägige Zeiträume: alle vollständigen Tage dazwischen
+            var currentCal = Calendar.getInstance().apply {
+                timeInMillis = mitternachtCal.timeInMillis
+            }
+
+            val endeCal = Calendar.getInstance().apply { time = ende }
+            endeCal.set(Calendar.HOUR_OF_DAY, 0)
+            endeCal.set(Calendar.MINUTE, 0)
+            endeCal.set(Calendar.SECOND, 0)
+            endeCal.set(Calendar.MILLISECOND, 0)
+
+            // Für jeden vollständigen Tag dazwischen (bei mehrtägigen Zeiträumen)
+            while (currentCal.timeInMillis < endeCal.timeInMillis) {
+                val currentDate = currentCal.time
+                val currentDateStr = tagFormat.format(currentDate)
+
+                // 24 Stunden in Millisekunden
+                tageszuordnung[currentDateStr] = (tageszuordnung[currentDateStr] ?: 0L) + (24 * 60 * 60 * 1000)
+
+                currentCal.add(Calendar.DAY_OF_YEAR, 1)
+            }
+
+            // Zeit von Mitternacht bis Ende am letzten Tag
+            val mitternachtBisEnde = ende.time - endeCal.timeInMillis
+            tageszuordnung[endeDatum] = (tageszuordnung[endeDatum] ?: 0L) + mitternachtBisEnde
+        }
+    }
+
+    return tageszuordnung
+}
+
+/**
+ * Berechnet die verschiedenen Zeiträume (heute, Woche, Monat, Jahr, ab Stichtag)
+ */
+private fun berechneZeitraeume(
+    tageszuordnung: Map<String, Long>,
+    tagFormat: SimpleDateFormat,
+    standDatum: Date?
+): ZeitraumSummen {
+    var gesamtHeute = 0L
+    var gesamtWoche = 0L
+    var gesamtMonat = 0L
+    var gesamtJahr = 0L
+    var gesamtSeitStichtag = 0L
+
+    // Aktuelle Kalender-Werte für Vergleiche
+    val calJetzt = Calendar.getInstance().apply {
+        firstDayOfWeek = Calendar.MONDAY
+        minimalDaysInFirstWeek = 4
+    }
+    val heuteStr = tagFormat.format(calJetzt.time)
+    val aktuellesJahr = calJetzt.get(Calendar.YEAR)
+    val aktuellerMonat = calJetzt.get(Calendar.MONTH)
+    val aktuelleWoche = calJetzt.get(Calendar.WEEK_OF_YEAR)
+
+    // Tageszeiten zu entsprechenden Summen addieren
+    for ((datumStr, zeitDauer) in tageszuordnung) {
+        val datumDate = tagFormat.parse(datumStr) ?: continue
+
+        // Prüfen auf heute/Woche/Monat/Jahr für Summierung
+        val cal = Calendar.getInstance().apply {
+            time = datumDate
+            firstDayOfWeek = Calendar.MONDAY
+            minimalDaysInFirstWeek = 4
+        }
+
+        val jahr = cal.get(Calendar.YEAR)
+        val monat = cal.get(Calendar.MONTH)
+        val woche = cal.get(Calendar.WEEK_OF_YEAR)
+
+        // Entsprechenden Zeiträumen zuordnen
+        if (datumStr == heuteStr) {
+            gesamtHeute += zeitDauer
+        }
+
+        if (jahr == aktuellesJahr) {
+            gesamtJahr += zeitDauer
+
+            if (monat == aktuellerMonat) {
+                gesamtMonat += zeitDauer
+            }
+
+            if (woche == aktuelleWoche) {
+                gesamtWoche += zeitDauer
+            }
+        }
+
+        // Ab Stichtag zählen
+        if (standDatum == null || !datumDate.before(standDatum)) {
+            gesamtSeitStichtag += zeitDauer
+        }
+    }
+
+    return ZeitraumSummen(
+        heute = gesamtHeute,
+        woche = gesamtWoche,
+        monat = gesamtMonat,
+        jahr = gesamtJahr,
+        seitStichtag = gesamtSeitStichtag
+    )
+}
+
+/**
+ * Berechnet Sollzeit und Überstunden
+ */
+private fun berechneSollzeitUndUeberstunden(
+    gesamtSeitStichtag: Long,
+    standDatum: Date?,
+    startwertMinuten: Int
+): Pair<Long, String> {
+    // Sollzeit berechnen (nur Arbeitstage Mo–Fr)
+    var sollzeitMinuten = 0
+    val calStart = Calendar.getInstance()
+
+    if (standDatum != null) {
+        calStart.time = standDatum
+    } else {
+        calStart.apply {
+            set(Calendar.MONTH, Calendar.JANUARY)
+            set(Calendar.DAY_OF_MONTH, 1)
+        }
+    }
+
+    val calEnd = Calendar.getInstance()
+
+    while (calStart.before(calEnd) || isSameDay(calStart, calEnd)) {
+        val tag = calStart.get(Calendar.DAY_OF_WEEK)
+        if (tag in Calendar.MONDAY..Calendar.FRIDAY) {
+            sollzeitMinuten += 8 * 60  // 8 Stunden pro Arbeitstag
+        }
+        calStart.add(Calendar.DAY_OF_YEAR, 1)
+    }
+
+    // Überstundenberechnung
+    val istMinuten = (gesamtSeitStichtag / 1000 / 60).toInt()
+    val diffMinuten = istMinuten + startwertMinuten - sollzeitMinuten
+
+    return Pair(gesamtSeitStichtag, formatMinutenAsText(diffMinuten))
+}
+
+/**
+ * Prüft, ob zwei Calendar-Objekte den gleichen Tag darstellen
+ */
+private fun isSameDay(cal1: Calendar, cal2: Calendar): Boolean {
+    return cal1.get(Calendar.YEAR) == cal2.get(Calendar.YEAR) &&
+            cal1.get(Calendar.DAY_OF_YEAR) == cal2.get(Calendar.DAY_OF_YEAR)
+}
+
+/**
+ * Formatiert Millisekunden in einen lesbaren Zeitstring
+ */
+private fun formatZeit(ms: Long): String {
+    if (ms == 0L) return ""
+
+    val minuten = ms / 1000 / 60
+    val stunden = Math.floor(minuten / 60.0).toInt()
+    val restMin = (minuten % 60).toInt()
+
+    return "${stunden}h ${restMin}min"
+}
+
+/**
+ * Hilfsklasse für die Zeitraum-Summen
+ */
+private data class ZeitraumSummen(
+    val heute: Long,
+    val woche: Long,
+    val monat: Long,
+    val jahr: Long,
+    val seitStichtag: Long
+)
+//----------------------------------------------------------------------------------------------------
+/*
 fun berechneAlleZeiten(
     stempelListe: List<Stempel>,
     startZeit: Date?,
@@ -388,6 +781,16 @@ fun berechneAlleZeiten(
         } catch (_: Exception) {}
     }
 
+    // --- Wenn Stichtag am Wochenende liegt → auf nächsten Montag verschieben
+    if (standDatum != null) {
+        val calTmp = Calendar.getInstance().apply { time = standDatum!! }
+        when (calTmp.get(Calendar.DAY_OF_WEEK)) {
+            Calendar.SATURDAY -> calTmp.add(Calendar.DAY_OF_YEAR, 2)
+            Calendar.SUNDAY -> calTmp.add(Calendar.DAY_OF_YEAR, 1)
+        }
+        standDatum = calTmp.time
+    }
+
     // --- Gruppiert nach Tag berechnen
     for ((datum, liste) in stempelListe.groupBy { it.zeit.substring(0, 10) }) {
         val starts = liste.filter { it.typ == "Start" }.mapNotNull { parseDateFlexible(it.zeit)?.time }
@@ -410,48 +813,49 @@ fun berechneAlleZeiten(
         cal.time = d
 
         val jahr = cal.get(Calendar.YEAR)
-        val woche = cal.get(Calendar.WEEK_OF_YEAR)
         val monat = cal.get(Calendar.MONTH)
 
-        val calJetzt = Calendar.getInstance()
+        // ISO-konforme Wochenzählung: Montag = erster Tag
+        val tmpCal = cal.clone() as Calendar
+        tmpCal.firstDayOfWeek = Calendar.MONDAY
+        tmpCal.minimalDaysInFirstWeek = 4
+        val woche = tmpCal.get(Calendar.WEEK_OF_YEAR)
+
+        val calJetzt = Calendar.getInstance().apply {
+            firstDayOfWeek = Calendar.MONDAY
+            minimalDaysInFirstWeek = 4
+        }
+        val aktuelleWoche = calJetzt.get(Calendar.WEEK_OF_YEAR)
+
         if (jahr == calJetzt.get(Calendar.YEAR)) {
             gesamtJahr += sum
             if (monat == calJetzt.get(Calendar.MONTH)) gesamtMonat += sum
-            if (woche == calJetzt.get(Calendar.WEEK_OF_YEAR)) gesamtWoche += sum
+            if (woche == aktuelleWoche) gesamtWoche += sum
         }
         if (datum == heuteStr) gesamtHeute += sum
 
-        // falls der Stichtag aktiv ist, addiere nur, wenn Datum >= standDatum
+        // Ab Stichtag zählen
         if (standDatum == null || !d.before(standDatum)) {
             gesamtSeitStichtag += sum
         }
     }
 
-    // --- Sollzeit ab Stichtag berechnen
+    // --- Sollzeit ab Stichtag berechnen (nur Arbeitstage Mo–Fr)
     var sollzeitMinuten = 0
-    if (standDatum != null) {
-        val calStart = Calendar.getInstance().apply { time = standDatum!! }
-        val calEnd = Calendar.getInstance()
-        while (calStart.before(calEnd) || tagFormat.format(calStart.time) == tagFormat.format(calEnd.time)) {
-            val tag = calStart.get(Calendar.DAY_OF_WEEK)
-            if (tag in Calendar.MONDAY..Calendar.FRIDAY) sollzeitMinuten += 8 * 60
-            calStart.add(Calendar.DAY_OF_YEAR, 1)
-        }
-    } else {
-        // falls kein Stichtag gesetzt, nimm Jahresbeginn
-        val calStart = Calendar.getInstance().apply {
-            set(Calendar.MONTH, Calendar.JANUARY)
-            set(Calendar.DAY_OF_MONTH, 1)
-        }
-        val calEnd = Calendar.getInstance()
-        while (calStart.before(calEnd) || tagFormat.format(calStart.time) == tagFormat.format(calEnd.time)) {
-            val tag = calStart.get(Calendar.DAY_OF_WEEK)
-            if (tag in Calendar.MONDAY..Calendar.FRIDAY) sollzeitMinuten += 8 * 60
-            calStart.add(Calendar.DAY_OF_YEAR, 1)
-        }
+    val calStart = Calendar.getInstance()
+    if (standDatum != null) calStart.time = standDatum!!
+    else calStart.apply {
+        set(Calendar.MONTH, Calendar.JANUARY)
+        set(Calendar.DAY_OF_MONTH, 1)
+    }
+    val calEnd = Calendar.getInstance()
+    while (calStart.before(calEnd) || tagFormat.format(calStart.time) == tagFormat.format(calEnd.time)) {
+        val tag = calStart.get(Calendar.DAY_OF_WEEK)
+        if (tag in Calendar.MONDAY..Calendar.FRIDAY) sollzeitMinuten += 8 * 60
+        calStart.add(Calendar.DAY_OF_YEAR, 1)
     }
 
-    // --- Überstunden ab Stichtag berechnen
+    // --- Überstundenberechnung
     val istMinuten = (gesamtSeitStichtag / 1000 / 60).toInt()
     val diffMinuten = istMinuten + startwertMinuten - sollzeitMinuten
     val ueberstundenText = formatMinutenAsText(diffMinuten)
@@ -473,6 +877,8 @@ fun berechneAlleZeiten(
         ueberstunden = ueberstundenText
     )
 }
+*/
+
 
 // ----------------------------------------------------------
 // Einstellungsseite mit Material3-Kalendern
@@ -745,4 +1151,34 @@ fun backupDateien(context: Context): String {
     } catch (e: Exception) {
         "Fehler beim Backup: ${e.message}"
     }
+}
+fun testBerechnung(context: Context) {
+    println("=== TEST STARTE ===")
+
+    val gson = Gson()
+    val stempelFile = File(context.filesDir, "stempel.json")
+    val settingsFile = File(context.filesDir, "settings.json")
+
+    if (!stempelFile.exists() || !settingsFile.exists()) {
+        println("Fehler: Dateien fehlen")
+        return
+    }
+
+    val stempelListe: List<Stempel> =
+        gson.fromJson(stempelFile.readText(), object : TypeToken<List<Stempel>>() {}.type)
+    val einstellungen = gson.fromJson(settingsFile.readText(), Einstellungen::class.java)
+
+    val jetzt = Date()
+    val result = berechneAlleZeiten(stempelListe, null, false, context)
+
+    println("=== DEBUG AUSGABE ===")
+    println("Stichtag: ${einstellungen.standDatum}")
+    println("Startwert (Minuten): ${einstellungen.startwertMinuten}")
+    println("Heute: ${result.heute}")
+    println("Woche: ${result.woche}")
+    println("Monat: ${result.monat}")
+    println("Jahr: ${result.jahr}")
+    println("Überstunden: ${result.ueberstunden}")
+    println("Berechnet am: ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(jetzt)}")
+    println("=====================")
 }
