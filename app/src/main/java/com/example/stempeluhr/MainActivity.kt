@@ -27,6 +27,8 @@ import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.abs
 import kotlin.math.floor
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 
 // ----------------------------------------------------------
 // Datenklassen
@@ -266,13 +268,26 @@ fun HauptScreen(onOpenSettings: () -> Unit) {
                 Text("Diesen Monat: $arbeitsdauerMonat", fontSize = 18.sp)
                 Text("Dieses Jahr: $arbeitsdauerJahr", fontSize = 18.sp)
 
-                // Fortschrittsanzeige für den Tag
+// Fortschrittsanzeige für den Tag
                 val regex = Regex("(\\d+)h\\s*(\\d+)?min?")
                 val match = regex.find(arbeitsdauerHeute)
                 val stunden = match?.groupValues?.get(1)?.toIntOrNull() ?: 0
                 val minuten = match?.groupValues?.get(2)?.toIntOrNull() ?: 0
                 val gesamtMinuten = stunden * 60 + minuten
                 val fortschritt = (gesamtMinuten / 480f).coerceIn(0f, 1f) // 480 Minuten = 8 Stunden
+
+// animierter Fortschritt
+                val animatedProgress = animateFloatAsState(
+                    targetValue = fortschritt,
+                    animationSpec = tween(durationMillis = 800)
+                ).value
+
+// dynamische Farbe je nach Fortschritt
+                val progressColor = when {
+                    fortschritt >= 1f -> MaterialTheme.colorScheme.primary   // ≥ 8h → grün/blau
+                    fortschritt >= 0.5f -> MaterialTheme.colorScheme.tertiary // 4–8h → gelb
+                    else -> MaterialTheme.colorScheme.error                   // <4h → rot
+                }
 
                 Spacer(Modifier.height(12.dp))
 
@@ -283,17 +298,16 @@ fun HauptScreen(onOpenSettings: () -> Unit) {
                     contentAlignment = Alignment.Center
                 ) {
                     CircularProgressIndicator(
-                        progress = fortschritt,
+                        progress = animatedProgress,
                         strokeWidth = 12.dp,
+                        color = progressColor,
                         modifier = Modifier.size(120.dp)
                     )
                     Text(
-                        text = String.format(
-                            "%.0f%%",
-                            fortschritt * 100
-                        ),
+                        text = String.format("%.0f%%", fortschritt * 100),
                         fontSize = 22.sp,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        color = progressColor
                     )
                 }
 
@@ -304,7 +318,6 @@ fun HauptScreen(onOpenSettings: () -> Unit) {
                     color = MaterialTheme.colorScheme.secondary
                 )
                 Spacer(Modifier.height(12.dp))
-
 
                 if (ueberstundenText.isNotEmpty()) {
                     val color = if (ueberstundenText.startsWith("-"))
@@ -745,140 +758,6 @@ private data class ZeitraumSummen(
     val jahr: Long,
     val seitStichtag: Long
 )
-//----------------------------------------------------------------------------------------------------
-/*
-fun berechneAlleZeiten(
-    stempelListe: List<Stempel>,
-    startZeit: Date?,
-    aktiv: Boolean,
-    context: Context
-): ZeitSumme {
-    if (stempelListe.isEmpty())
-        return ZeitSumme("", "", "", "", "", "", "+0:00")
-
-    val tagFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-    val jetzt = System.currentTimeMillis()
-    val heuteStr = tagFormat.format(Date())
-    val cal = Calendar.getInstance()
-
-    var gesamtHeute = 0L
-    var gesamtWoche = 0L
-    var gesamtMonat = 0L
-    var gesamtJahr = 0L
-    var gesamtSeitStichtag = 0L
-
-    // --- Einstellungen laden
-    val settingsFile = File(context.filesDir, "settings.json")
-    var startwertMinuten = 0
-    var standDatum: Date? = null
-    if (settingsFile.exists()) {
-        try {
-            val einstellungen = Gson().fromJson(settingsFile.readText(), Einstellungen::class.java)
-            startwertMinuten = einstellungen.startwertMinuten
-            if (einstellungen.standDatum.isNotBlank()) {
-                standDatum = tagFormat.parse(einstellungen.standDatum)
-            }
-        } catch (_: Exception) {}
-    }
-
-    // --- Wenn Stichtag am Wochenende liegt → auf nächsten Montag verschieben
-    if (standDatum != null) {
-        val calTmp = Calendar.getInstance().apply { time = standDatum!! }
-        when (calTmp.get(Calendar.DAY_OF_WEEK)) {
-            Calendar.SATURDAY -> calTmp.add(Calendar.DAY_OF_YEAR, 2)
-            Calendar.SUNDAY -> calTmp.add(Calendar.DAY_OF_YEAR, 1)
-        }
-        standDatum = calTmp.time
-    }
-
-    // --- Gruppiert nach Tag berechnen
-    for ((datum, liste) in stempelListe.groupBy { it.zeit.substring(0, 10) }) {
-        val starts = liste.filter { it.typ == "Start" }.mapNotNull { parseDateFlexible(it.zeit)?.time }
-        val enden = liste.filter { it.typ == "Ende" }.mapNotNull { parseDateFlexible(it.zeit)?.time }
-
-        var sum = 0L
-        val n = minOf(starts.size, enden.size)
-        for (i in 0 until n) {
-            val diff = enden[i] - starts[i]
-            if (diff > 0) sum += diff
-        }
-
-        // Laufende Zeit addieren, falls aktiv und heute
-        if (aktiv && datum == heuteStr && startZeit != null) {
-            val diff = jetzt - startZeit.time
-            if (diff > 0) sum += diff
-        }
-
-        val d = tagFormat.parse(datum) ?: continue
-        cal.time = d
-
-        val jahr = cal.get(Calendar.YEAR)
-        val monat = cal.get(Calendar.MONTH)
-
-        // ISO-konforme Wochenzählung: Montag = erster Tag
-        val tmpCal = cal.clone() as Calendar
-        tmpCal.firstDayOfWeek = Calendar.MONDAY
-        tmpCal.minimalDaysInFirstWeek = 4
-        val woche = tmpCal.get(Calendar.WEEK_OF_YEAR)
-
-        val calJetzt = Calendar.getInstance().apply {
-            firstDayOfWeek = Calendar.MONDAY
-            minimalDaysInFirstWeek = 4
-        }
-        val aktuelleWoche = calJetzt.get(Calendar.WEEK_OF_YEAR)
-
-        if (jahr == calJetzt.get(Calendar.YEAR)) {
-            gesamtJahr += sum
-            if (monat == calJetzt.get(Calendar.MONTH)) gesamtMonat += sum
-            if (woche == aktuelleWoche) gesamtWoche += sum
-        }
-        if (datum == heuteStr) gesamtHeute += sum
-
-        // Ab Stichtag zählen
-        if (standDatum == null || !d.before(standDatum)) {
-            gesamtSeitStichtag += sum
-        }
-    }
-
-    // --- Sollzeit ab Stichtag berechnen (nur Arbeitstage Mo–Fr)
-    var sollzeitMinuten = 0
-    val calStart = Calendar.getInstance()
-    if (standDatum != null) calStart.time = standDatum!!
-    else calStart.apply {
-        set(Calendar.MONTH, Calendar.JANUARY)
-        set(Calendar.DAY_OF_MONTH, 1)
-    }
-    val calEnd = Calendar.getInstance()
-    while (calStart.before(calEnd) || tagFormat.format(calStart.time) == tagFormat.format(calEnd.time)) {
-        val tag = calStart.get(Calendar.DAY_OF_WEEK)
-        if (tag in Calendar.MONDAY..Calendar.FRIDAY) sollzeitMinuten += 8 * 60
-        calStart.add(Calendar.DAY_OF_YEAR, 1)
-    }
-
-    // --- Überstundenberechnung
-    val istMinuten = (gesamtSeitStichtag / 1000 / 60).toInt()
-    val diffMinuten = istMinuten + startwertMinuten - sollzeitMinuten
-    val ueberstundenText = formatMinutenAsText(diffMinuten)
-
-    fun formatZeit(ms: Long): String {
-        val minuten = ms / 1000 / 60
-        val stunden = floor(minuten / 60.0).toInt()
-        val restMin = (minuten % 60).toInt()
-        return if (ms != 0L) "${stunden}h ${restMin}min" else ""
-    }
-
-    return ZeitSumme(
-        heute = formatZeit(gesamtHeute),
-        woche = formatZeit(gesamtWoche),
-        monat = formatZeit(gesamtMonat),
-        jahr = formatZeit(gesamtJahr),
-        startwert = if (startwertMinuten != 0) formatMinutenAsText(startwertMinuten) else "",
-        standDatum = standDatum?.let { tagFormat.format(it) } ?: "",
-        ueberstunden = ueberstundenText
-    )
-}
-*/
-
 
 // ----------------------------------------------------------
 // Einstellungsseite mit Material3-Kalendern
