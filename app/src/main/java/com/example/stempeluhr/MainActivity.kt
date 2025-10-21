@@ -26,9 +26,9 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.abs
-import kotlin.math.floor
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.Color
 
 // ----------------------------------------------------------
 // Datenklassen
@@ -268,56 +268,95 @@ fun HauptScreen(onOpenSettings: () -> Unit) {
                 Text("Diesen Monat: $arbeitsdauerMonat", fontSize = 18.sp)
                 Text("Dieses Jahr: $arbeitsdauerJahr", fontSize = 18.sp)
 
-// Fortschrittsanzeige für den Tag
+// Fortschrittsanzeigen für Tag und Woche
                 val regex = Regex("(\\d+)h\\s*(\\d+)?min?")
-                val match = regex.find(arbeitsdauerHeute)
-                val stunden = match?.groupValues?.get(1)?.toIntOrNull() ?: 0
-                val minuten = match?.groupValues?.get(2)?.toIntOrNull() ?: 0
-                val gesamtMinuten = stunden * 60 + minuten
-                val fortschritt = (gesamtMinuten / 480f).coerceIn(0f, 1f) // 480 Minuten = 8 Stunden
 
-// animierter Fortschritt
-                val animatedProgress = animateFloatAsState(
-                    targetValue = fortschritt,
+                fun parseMinutes(text: String): Int {
+                    val m = regex.find(text)
+                    val h = m?.groupValues?.get(1)?.toIntOrNull() ?: 0
+                    val min = m?.groupValues?.get(2)?.toIntOrNull() ?: 0
+                    return h * 60 + min
+                }
+
+                val minutenHeute = parseMinutes(arbeitsdauerHeute)
+                val minutenWoche = parseMinutes(arbeitsdauerWoche)
+                val fortschrittHeute = (minutenHeute / 480f).coerceIn(0f, 1f)   // 8h = 480min
+                val fortschrittWoche = (minutenWoche / 2400f).coerceIn(0f, 1f)  // 40h = 2400min
+
+                val animatedHeute = animateFloatAsState(
+                    targetValue = fortschrittHeute,
+                    animationSpec = tween(durationMillis = 800)
+                ).value
+                val animatedWoche = animateFloatAsState(
+                    targetValue = fortschrittWoche,
                     animationSpec = tween(durationMillis = 800)
                 ).value
 
-// dynamische Farbe je nach Fortschritt
-                val progressColor = when {
-                    fortschritt >= 1f -> MaterialTheme.colorScheme.primary   // ≥ 8h → grün/blau
-                    fortschritt >= 0.5f -> MaterialTheme.colorScheme.tertiary // 4–8h → gelb
-                    else -> MaterialTheme.colorScheme.error                   // <4h → rot
+                @Composable
+                fun farbe(progress: Float): Color = when {
+                    progress >= 1f -> MaterialTheme.colorScheme.primary
+                    progress >= 0.5f -> MaterialTheme.colorScheme.tertiary
+                    else -> MaterialTheme.colorScheme.error
                 }
 
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(16.dp))
 
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(150.dp),
-                    contentAlignment = Alignment.Center
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    CircularProgressIndicator(
-                        progress = animatedProgress,
-                        strokeWidth = 12.dp,
-                        color = progressColor,
-                        modifier = Modifier.size(120.dp)
-                    )
-                    Text(
-                        text = String.format("%.0f%%", fortschritt * 100),
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = progressColor
-                    )
+                    // --- Tagesfortschritt ---
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Box(contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(
+                                progress = animatedHeute,
+                                strokeWidth = 10.dp,
+                                color = farbe(fortschrittHeute),
+                                modifier = Modifier.size(100.dp)
+                            )
+                            Text(
+                                text = String.format("%.0f%%", fortschrittHeute * 100),
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = farbe(fortschrittHeute)
+                            )
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "Heute: ${arbeitsdauerHeute.ifBlank { "0h" }} / 8h",
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.secondary
+                        )
+                    }
+
+                    // --- Wochenfortschritt ---
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Box(contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(
+                                progress = animatedWoche,
+                                strokeWidth = 10.dp,
+                                color = farbe(fortschrittWoche),
+                                modifier = Modifier.size(100.dp)
+                            )
+                            Text(
+                                text = String.format("%.0f%%", fortschrittWoche * 100),
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = farbe(fortschrittWoche)
+                            )
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "Woche: ${arbeitsdauerWoche.ifBlank { "0h" }} / 40h",
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.secondary
+                        )
+                    }
                 }
 
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "Heute gearbeitet: ${arbeitsdauerHeute} von 8h",
-                    fontSize = 16.sp,
-                    color = MaterialTheme.colorScheme.secondary
-                )
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(20.dp))
+
 
                 if (ueberstundenText.isNotEmpty()) {
                     val color = if (ueberstundenText.startsWith("-"))
