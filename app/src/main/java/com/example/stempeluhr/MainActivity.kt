@@ -21,11 +21,13 @@ import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import java.io.File
-import java.text.SimpleDateFormat
 import java.util.*
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.graphics.Color
+import java.text.SimpleDateFormat
+import com.example.feiertage.holeFeiertageBW
+
 // ----------------------------------------------------------
 // Datenklassen
 // ----------------------------------------------------------
@@ -82,7 +84,15 @@ fun StempeluhrApp() {
 // ----------------------------------------------------------
 // Hauptansicht (Zeiterfassung)
 // ----------------------------------------------------------
-
+@Composable
+fun AbschnittTitel(text: String) {
+    Text(
+        text,
+        fontSize = 18.sp,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.primary
+    )
+}
 @Composable
 fun HauptScreen(onOpenSettings: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -214,29 +224,43 @@ fun HauptScreen(onOpenSettings: () -> Unit) {
     ) {
         Column {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Stempeluhr", fontSize = 28.sp, fontWeight = FontWeight.Bold)
+                Column {
+                    Text(
+                        "Stempeluhr",
+                        fontSize = 28.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(top = 24.dp)
+                    ) {
+                        Checkbox(
+                            checked = homeofficeAktiv,
+                            onCheckedChange = {
+                                homeofficeAktiv = it
+                                speichereHomeofficeStatus(it)
+                            },
+                            modifier = Modifier
+                                .size(24.dp)
+                                .offset(y = (-2).dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text("Homeoffice", fontSize = 18.sp)
+                    }
+                }
+
                 IconButton(onClick = onOpenSettings) {
                     Icon(Icons.Default.Settings, contentDescription = "Einstellungen")
                 }
             }
 
-            Spacer(Modifier.height(24.dp))
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(
-                    checked = homeofficeAktiv,
-                    onCheckedChange = {
-                        homeofficeAktiv = it
-                        speichereHomeofficeStatus(it)
-                    }
-                )
-                Spacer(Modifier.width(8.dp))
-                Text("Homeoffice", fontSize = 18.sp)
-            }
 
             Spacer(Modifier.height(12.dp))
             Text(statusText, fontSize = 20.sp)
@@ -370,12 +394,31 @@ fun HauptScreen(onOpenSettings: () -> Unit) {
                 }
 
                 Spacer(Modifier.height(16.dp))
-                Text("Urlaub: $urlaubGenommen / $urlaubGesamt Tage genommen", fontSize = 18.sp)
-                Text(
-                    "Verbleibend: $urlaubVerbleibend Tage",
-                    fontSize = 16.sp,
-                    color = MaterialTheme.colorScheme.secondary
-                )
+                AbschnittTitel("Urlaub:")
+                Text("Genommen: $urlaubGenommen / $urlaubGesamt Tage", fontSize = 16.sp)
+                Text("Verbleibend: $urlaubVerbleibend Tage", fontSize = 16.sp, color = MaterialTheme.colorScheme.secondary)
+
+                Spacer(Modifier.height(20.dp))
+                AbschnittTitel("Nächste freie Tage:")
+
+                val aktuelleFeiertage = remember {
+                    holeFeiertageBW().sortedBy { it.date }
+                }
+                val heute = java.time.LocalDate.now()
+                val naechsteFeiertage = remember {
+                    holeFeiertageBW()
+                        .filter { it.date.isAfter(java.time.LocalDate.now()) }
+                        .take(3)
+                }
+                val formatter = java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy")
+
+                naechsteFeiertage.forEach {
+                    Text(
+                        text = "${it.date.format(formatter)} – ${it.description}",
+                        fontSize = 16.sp,
+                        color = MaterialTheme.colorScheme.secondary
+                    )
+                }
             }
         }
 

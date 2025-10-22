@@ -40,6 +40,7 @@ android {
 }
 
 dependencies {
+    implementation("com.google.code.gson:gson:2.10.1")
     implementation("androidx.compose.material3:material3:1.3.0")
     implementation("com.google.code.gson:gson:2.11.0")
     implementation(libs.androidx.core.ktx)
