@@ -410,11 +410,12 @@ fun HauptScreen(onOpenSettings: () -> Unit) {
                         .filter { it.date.isAfter(java.time.LocalDate.now()) }
                         .take(3)
                 }
-                val formatter = java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy")
+                val formatter = java.time.format.DateTimeFormatter.ofPattern("EEE, dd.MM.yyyy", Locale.GERMAN)
 
                 naechsteFeiertage.forEach {
+                    val text = "${it.date.format(formatter)} – ${it.description}"
                     Text(
-                        text = "${it.date.format(formatter)} – ${it.description}",
+                        text = text,
                         fontSize = 16.sp,
                         color = MaterialTheme.colorScheme.secondary
                     )
