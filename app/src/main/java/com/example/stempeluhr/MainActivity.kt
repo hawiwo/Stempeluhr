@@ -260,23 +260,29 @@ fun HauptScreen(onOpenSettings: () -> Unit) {
 
                 val minutenHeute = parseMinutes(arbeitsdauerHeute)
                 val minutenWoche = parseMinutes(arbeitsdauerWoche)
-                val fortschrittHeute = (minutenHeute / 480f).coerceIn(0f, 1f)   // 8h = 480min
-                val fortschrittWoche = (minutenWoche / 2400f).coerceIn(0f, 1f)  // 40h = 2400min
+
+                val fortschrittHeute = minutenHeute / 480f
+                val fortschrittWoche = minutenWoche / 2400f
+
+                val progressHeute = fortschrittHeute % 1f
+                val progressWoche = fortschrittWoche % 1f
 
                 val animatedHeute = animateFloatAsState(
-                    targetValue = fortschrittHeute,
+                    targetValue = progressHeute,
                     animationSpec = tween(durationMillis = 800)
                 ).value
                 val animatedWoche = animateFloatAsState(
-                    targetValue = fortschrittWoche,
+                    targetValue = progressWoche,
                     animationSpec = tween(durationMillis = 800)
                 ).value
 
                 @Composable
-                fun farbe(progress: Float): Color = when {
-                    progress >= 1f -> MaterialTheme.colorScheme.primary
-                    progress >= 0.5f -> MaterialTheme.colorScheme.tertiary
-                    else -> MaterialTheme.colorScheme.error
+                fun farbe(progress: Float): Color {
+                    return if (progress <= 1f) {
+                        androidx.compose.ui.graphics.lerp(Color.Red, Color(0f, 0.6f, 0f), progress)
+                    } else {
+                        Color(0f, 0.6f, 0f)
+                    }
                 }
 
                 Spacer(Modifier.height(16.dp))
