@@ -27,6 +27,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.ui.graphics.Color
 import java.text.SimpleDateFormat
 import com.example.feiertage.holeFeiertageBW
+import androidx.compose.foundation.clickable
 
 // ----------------------------------------------------------
 // Datenklassen
@@ -318,12 +319,27 @@ fun HauptScreen(onOpenSettings: () -> Unit) {
                 ) {
                     // --- Tagesfortschritt ---
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Box(contentAlignment = Alignment.Center) {
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .size(100.dp)
+                                .clickable {
+                                    // manuelles Neuberechnen der Arbeitszeiten
+                                    val zeiten = berechneAlleZeiten(stempelListe, eingestempeltSeit, istEingestempelt, context)
+                                    arbeitsdauerHeute = zeiten.heute
+                                    arbeitsdauerWoche = zeiten.woche
+                                    arbeitsdauerMonat = zeiten.monat
+                                    arbeitsdauerJahr = zeiten.jahr
+                                    startwertAnzeige = zeiten.startwert
+                                    standDatumAnzeige = zeiten.standDatum
+                                    ueberstundenText = zeiten.ueberstunden
+                                }
+                        ) {
                             CircularProgressIndicator(
                                 progress = animatedHeute,
                                 strokeWidth = 10.dp,
                                 color = farbe(fortschrittHeute),
-                                modifier = Modifier.size(100.dp)
+                                modifier = Modifier.matchParentSize()
                             )
                             Text(
                                 text = String.format("%.0f%%", fortschrittHeute * 100),
@@ -339,7 +355,6 @@ fun HauptScreen(onOpenSettings: () -> Unit) {
                             color = MaterialTheme.colorScheme.secondary
                         )
                     }
-
                     // --- Wochenfortschritt ---
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Box(contentAlignment = Alignment.Center) {
@@ -422,24 +437,12 @@ fun HauptScreen(onOpenSettings: () -> Unit) {
                 }
             }
         }
-
         Column {
-            Button(
-                onClick = {
-                    if (!istEingestempelt) {
-                        val jetzt = Date()
-                        addStempel("Start", stempelListe, gson, logFile, homeofficeAktiv)
-                        eingestempeltSeit = jetzt
-                        statusText =
-                            "Eingestempelt seit ${format.format(jetzt).substring(11)}"
-                        istEingestempelt = true
-                    }
-                },
-                modifier = Modifier.fillMaxWidth().height(80.dp),
-                enabled = !istEingestempelt
-            ) { Text("Start", fontSize = 22.sp) }
-
-            Spacer(Modifier.height(24.dp))
+            val buttonText = if (istEingestempelt) "Ende" else "Start"
+            val buttonColor = if (istEingestempelt)
+                MaterialTheme.colorScheme.error
+            else
+                MaterialTheme.colorScheme.primary
 
             Button(
                 onClick = {
@@ -448,11 +451,21 @@ fun HauptScreen(onOpenSettings: () -> Unit) {
                         statusText = "Ausgestempelt"
                         istEingestempelt = false
                         eingestempeltSeit = null
+                    } else {
+                        val jetzt = Date()
+                        addStempel("Start", stempelListe, gson, logFile, homeofficeAktiv)
+                        eingestempeltSeit = jetzt
+                        statusText = "Eingestempelt seit ${format.format(jetzt).substring(11)}"
+                        istEingestempelt = true
                     }
                 },
-                modifier = Modifier.fillMaxWidth().height(80.dp),
-                enabled = istEingestempelt
-            ) { Text("Ende", fontSize = 22.sp) }
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(80.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = buttonColor)
+            ) {
+                Text(buttonText, fontSize = 22.sp)
+            }
         }
     }
 }
