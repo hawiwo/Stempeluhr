@@ -28,6 +28,9 @@ import androidx.compose.ui.graphics.Color
 import java.text.SimpleDateFormat
 import com.example.feiertage.holeFeiertageBW
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+
 
 // ----------------------------------------------------------
 // Datenklassen
@@ -262,10 +265,9 @@ fun HauptScreen(onOpenSettings: () -> Unit) {
                 }
             }
 
-
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(6.dp))
             Text(statusText, fontSize = 20.sp)
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(6.dp))
 
             if (arbeitsdauerHeute.isNotEmpty()) {
                 Text("Heute: $arbeitsdauerHeute", fontSize = 18.sp)
@@ -310,7 +312,7 @@ fun HauptScreen(onOpenSettings: () -> Unit) {
                     }
                 }
 
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(12.dp))
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -380,8 +382,120 @@ fun HauptScreen(onOpenSettings: () -> Unit) {
                     }
                 }
 
-                Spacer(Modifier.height(20.dp))
+                Spacer(Modifier.height(12.dp))
 
+                val weekHours = remember(stempelListe.size, istEingestempelt, eingestempeltSeit) {
+                    val now = java.time.LocalDate.now()
+                    val monday = now.with(java.time.DayOfWeek.MONDAY)
+                    val sunday = now.with(java.time.DayOfWeek.SUNDAY)
+                    val dayMap = mutableMapOf<java.time.LocalDate, Long>()
+                    var currentStart: Date? = null
+                    val sorted = stempelListe.mapNotNull {
+                        val d = parseDateFlexible(it.zeit)
+                        if (d != null) d to it.typ else null
+                    }.sortedBy { it.first.time }
+                    sorted.forEach { (d, typ) ->
+                        when (typ) {
+                            "Start" -> currentStart = d
+                            "Ende" -> if (currentStart != null && currentStart!!.time < d.time) {
+                                var s = currentStart!!.toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDateTime()
+                                var e = d.toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDateTime()
+                                while (!s.toLocalDate().isAfter(e.toLocalDate())) {
+                                    val day = s.toLocalDate()
+                                    val dayStart = s.withHour(0).withMinute(0).withSecond(0).withNano(0)
+                                    val nextDayStart = dayStart.plusDays(1)
+                                    val segmentEnd = if (e.isBefore(nextDayStart)) e else nextDayStart
+                                    if (!day.isBefore(monday) && !day.isAfter(sunday)) {
+                                        val ms = java.time.Duration.between(s, segmentEnd).toMillis()
+                                        dayMap[day] = (dayMap[day] ?: 0L) + ms
+                                    }
+                                    s = nextDayStart
+                                }
+                                currentStart = null
+                            }
+                        }
+                    }
+                    if (istEingestempelt && eingestempeltSeit != null) {
+                        val nowDt = Date()
+                        var s = eingestempeltSeit!!.toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDateTime()
+                        var e = nowDt.toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDateTime()
+                        while (!s.toLocalDate().isAfter(e.toLocalDate())) {
+                            val day = s.toLocalDate()
+                            val dayStart = s.withHour(0).withMinute(0).withSecond(0).withNano(0)
+                            val nextDayStart = dayStart.plusDays(1)
+                            val segmentEnd = if (e.isBefore(nextDayStart)) e else nextDayStart
+                            if (!day.isBefore(monday) && !day.isAfter(sunday)) {
+                                val ms = java.time.Duration.between(s, segmentEnd).toMillis()
+                                dayMap[day] = (dayMap[day] ?: 0L) + ms
+                            }
+                            s = nextDayStart
+                        }
+                    }
+                    val order = listOf(
+                        java.time.DayOfWeek.MONDAY,
+                        java.time.DayOfWeek.TUESDAY,
+                        java.time.DayOfWeek.WEDNESDAY,
+                        java.time.DayOfWeek.THURSDAY,
+                        java.time.DayOfWeek.FRIDAY,
+                        java.time.DayOfWeek.SATURDAY,
+                        java.time.DayOfWeek.SUNDAY
+                    )
+                    val days = order.map { monday.with(it) }
+                    days.map { d -> (dayMap[d] ?: 0L) / 1000f / 3600f }
+                }
+                AbschnittTitel("Arbeitszeiten der Woche")
+                Spacer(Modifier.height(8.dp))
+
+                val maxH = 24f
+                val dayLabels = listOf("Mo","Di","Mi","Do","Fr","Sa","So")
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                ) {
+                    weekHours.forEachIndexed { idx, h ->
+                        val frac = (h.coerceIn(0f, maxH)) / maxH
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(20.dp)
+                                .padding(vertical = 4.dp)
+                        ) {
+                            Text(
+                                dayLabels[idx],
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.secondary,
+                                modifier = Modifier.width(28.dp)
+                            )
+
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth(frac)
+                                    .height(16.dp)
+                                    .background(
+                                        if (h > 0f)
+                                            MaterialTheme.colorScheme.primary
+                                        else
+                                            MaterialTheme.colorScheme.surfaceVariant,
+                                        shape = RoundedCornerShape(4.dp)
+                                    )
+                            )
+
+                            Spacer(Modifier.width(8.dp))
+
+                            Text(
+                                String.format("%.1f h", h),
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.secondary
+                            )
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(12.dp))
 
                 if (ueberstundenText.isNotEmpty()) {
                     val color = if (ueberstundenText.startsWith("-"))
@@ -408,12 +522,12 @@ fun HauptScreen(onOpenSettings: () -> Unit) {
                     )
                 }
 
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(12.dp))
                 AbschnittTitel("Urlaub:")
                 Text("Genommen: $urlaubGenommen / $urlaubGesamt Tage", fontSize = 16.sp)
                 Text("Verbleibend: $urlaubVerbleibend Tage", fontSize = 16.sp, color = MaterialTheme.colorScheme.secondary)
 
-                Spacer(Modifier.height(20.dp))
+                Spacer(Modifier.height(12.dp))
                 AbschnittTitel("Nächste freie Tage:")
 
                 val aktuelleFeiertage = remember {
@@ -522,7 +636,7 @@ fun EinstellungenScreen(onClose: () -> Unit) {
             .verticalScroll(scrollState)
     ) {
         Text("Einstellungen", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(10.dp))
 
         // JSON-Dateien Sektion (zusammenklappbar)
         Card(
@@ -569,7 +683,7 @@ fun EinstellungenScreen(onClose: () -> Unit) {
             }
         }
 
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(10.dp))
 
         // Urlaub hinzufügen
         Card(modifier = Modifier.fillMaxWidth()) {
@@ -656,7 +770,7 @@ fun EinstellungenScreen(onClose: () -> Unit) {
             ) { DatePicker(state = state) }
         }
 
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(10.dp))
 
         // Urlaubsliste
         Card(modifier = Modifier.fillMaxWidth()) {
@@ -675,7 +789,7 @@ fun EinstellungenScreen(onClose: () -> Unit) {
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(10.dp))
 
         // Aktionsbuttons
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
@@ -723,6 +837,6 @@ fun EinstellungenScreen(onClose: () -> Unit) {
             Text(statusText, color = statusColor, fontSize = 14.sp)
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(10.dp))
     }
 }
