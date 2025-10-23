@@ -30,7 +30,9 @@ import com.example.feiertage.holeFeiertageBW
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
-
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.platform.LocalDensity
 
 // ----------------------------------------------------------
 // Datenklassen
@@ -97,6 +99,7 @@ fun AbschnittTitel(text: String) {
         color = MaterialTheme.colorScheme.primary
     )
 }
+
 @Composable
 fun HauptScreen(onOpenSettings: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -270,8 +273,8 @@ fun HauptScreen(onOpenSettings: () -> Unit) {
             Spacer(Modifier.height(6.dp))
 
             if (arbeitsdauerHeute.isNotEmpty()) {
-                Text("Heute: $arbeitsdauerHeute", fontSize = 18.sp)
-                Text("Diese Woche: $arbeitsdauerWoche", fontSize = 18.sp)
+                // Text("Heute: $arbeitsdauerHeute", fontSize = 18.sp)
+                // Text("Diese Woche: $arbeitsdauerWoche", fontSize = 18.sp)
                 Text("Diesen Monat: $arbeitsdauerMonat", fontSize = 18.sp)
                 Text("Dieses Jahr: $arbeitsdauerJahr", fontSize = 18.sp)
 
@@ -327,7 +330,12 @@ fun HauptScreen(onOpenSettings: () -> Unit) {
                                 .size(100.dp)
                                 .clickable {
                                     // manuelles Neuberechnen der Arbeitszeiten
-                                    val zeiten = berechneAlleZeiten(stempelListe, eingestempeltSeit, istEingestempelt, context)
+                                    val zeiten = berechneAlleZeiten(
+                                        stempelListe,
+                                        eingestempeltSeit,
+                                        istEingestempelt,
+                                        context
+                                    )
                                     arbeitsdauerHeute = zeiten.heute
                                     arbeitsdauerWoche = zeiten.woche
                                     arbeitsdauerMonat = zeiten.monat
@@ -383,117 +391,142 @@ fun HauptScreen(onOpenSettings: () -> Unit) {
                 }
 
                 Spacer(Modifier.height(12.dp))
-
-                val weekHours = remember(stempelListe.size, istEingestempelt, eingestempeltSeit) {
-                    val now = java.time.LocalDate.now()
-                    val monday = now.with(java.time.DayOfWeek.MONDAY)
-                    val sunday = now.with(java.time.DayOfWeek.SUNDAY)
-                    val dayMap = mutableMapOf<java.time.LocalDate, Long>()
-                    var currentStart: Date? = null
-                    val sorted = stempelListe.mapNotNull {
-                        val d = parseDateFlexible(it.zeit)
-                        if (d != null) d to it.typ else null
-                    }.sortedBy { it.first.time }
-                    sorted.forEach { (d, typ) ->
-                        when (typ) {
-                            "Start" -> currentStart = d
-                            "Ende" -> if (currentStart != null && currentStart!!.time < d.time) {
-                                var s = currentStart!!.toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDateTime()
-                                var e = d.toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDateTime()
-                                while (!s.toLocalDate().isAfter(e.toLocalDate())) {
-                                    val day = s.toLocalDate()
-                                    val dayStart = s.withHour(0).withMinute(0).withSecond(0).withNano(0)
-                                    val nextDayStart = dayStart.plusDays(1)
-                                    val segmentEnd = if (e.isBefore(nextDayStart)) e else nextDayStart
-                                    if (!day.isBefore(monday) && !day.isAfter(sunday)) {
-                                        val ms = java.time.Duration.between(s, segmentEnd).toMillis()
-                                        dayMap[day] = (dayMap[day] ?: 0L) + ms
+                val workSegments =
+                    remember(stempelListe.size, istEingestempelt, eingestempeltSeit) {
+                        val now = java.time.LocalDate.now()
+                        val monday = now.with(java.time.DayOfWeek.MONDAY)
+                        val sunday = now.with(java.time.DayOfWeek.SUNDAY)
+                        val segments =
+                            mutableMapOf<java.time.LocalDate, MutableList<Pair<Float, Float>>>()
+                        var currentStart: Date? = null
+                        val sorted = stempelListe.mapNotNull {
+                            val d = parseDateFlexible(it.zeit)
+                            if (d != null) d to it.typ else null
+                        }.sortedBy { it.first.time }
+                        sorted.forEach { (d, typ) ->
+                            when (typ) {
+                                "Start" -> currentStart = d
+                                "Ende" -> if (currentStart != null && currentStart!!.before(d)) {
+                                    val start = currentStart!!.toInstant()
+                                        .atZone(java.time.ZoneId.systemDefault()).toLocalDateTime()
+                                    val end = d.toInstant().atZone(java.time.ZoneId.systemDefault())
+                                        .toLocalDateTime()
+                                    var s = start
+                                    var e = end
+                                    while (!s.toLocalDate().isAfter(e.toLocalDate())) {
+                                        val day = s.toLocalDate()
+                                        val dayStart =
+                                            s.withHour(0).withMinute(0).withSecond(0).withNano(0)
+                                        val nextDayStart = dayStart.plusDays(1)
+                                        val segEnd =
+                                            if (e.isBefore(nextDayStart)) e else nextDayStart
+                                        if (!day.isBefore(monday) && !day.isAfter(sunday)) {
+                                            val startH = s.hour + s.minute / 60f
+                                            val endH = segEnd.hour + segEnd.minute / 60f
+                                            segments.getOrPut(day) { mutableListOf() }
+                                                .add(startH to endH)
+                                        }
+                                        s = nextDayStart
                                     }
-                                    s = nextDayStart
+                                    currentStart = null
                                 }
-                                currentStart = null
                             }
                         }
-                    }
-                    if (istEingestempelt && eingestempeltSeit != null) {
-                        val nowDt = Date()
-                        var s = eingestempeltSeit!!.toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDateTime()
-                        var e = nowDt.toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDateTime()
-                        while (!s.toLocalDate().isAfter(e.toLocalDate())) {
-                            val day = s.toLocalDate()
-                            val dayStart = s.withHour(0).withMinute(0).withSecond(0).withNano(0)
-                            val nextDayStart = dayStart.plusDays(1)
-                            val segmentEnd = if (e.isBefore(nextDayStart)) e else nextDayStart
+                        if (istEingestempelt && eingestempeltSeit != null) {
+                            val nowDt = Date()
+                            val start = eingestempeltSeit!!.toInstant()
+                                .atZone(java.time.ZoneId.systemDefault()).toLocalDateTime()
+                            val end = nowDt.toInstant().atZone(java.time.ZoneId.systemDefault())
+                                .toLocalDateTime()
+                            val day = start.toLocalDate()
                             if (!day.isBefore(monday) && !day.isAfter(sunday)) {
-                                val ms = java.time.Duration.between(s, segmentEnd).toMillis()
-                                dayMap[day] = (dayMap[day] ?: 0L) + ms
+                                val startH = start.hour + start.minute / 60f
+                                val endH = end.hour + end.minute / 60f
+                                segments.getOrPut(day) { mutableListOf() }.add(startH to endH)
                             }
-                            s = nextDayStart
                         }
+                        segments
                     }
-                    val order = listOf(
-                        java.time.DayOfWeek.MONDAY,
-                        java.time.DayOfWeek.TUESDAY,
-                        java.time.DayOfWeek.WEDNESDAY,
-                        java.time.DayOfWeek.THURSDAY,
-                        java.time.DayOfWeek.FRIDAY,
-                        java.time.DayOfWeek.SATURDAY,
-                        java.time.DayOfWeek.SUNDAY
-                    )
-                    val days = order.map { monday.with(it) }
-                    days.map { d -> (dayMap[d] ?: 0L) / 1000f / 3600f }
-                }
-                AbschnittTitel("Arbeitszeiten der Woche")
-                Spacer(Modifier.height(8.dp))
 
-                val maxH = 24f
-                val dayLabels = listOf("Mo","Di","Mi","Do","Fr","Sa","So")
+                val days = listOf(
+                    java.time.DayOfWeek.MONDAY,
+                    java.time.DayOfWeek.TUESDAY,
+                    java.time.DayOfWeek.WEDNESDAY,
+                    java.time.DayOfWeek.THURSDAY,
+                    java.time.DayOfWeek.FRIDAY,
+                    java.time.DayOfWeek.SATURDAY,
+                    java.time.DayOfWeek.SUNDAY
+                )
+                val labels = listOf("Mo", "Di", "Mi", "Do", "Fr", "Sa", "So")
+                val density = LocalDensity.current
 
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp)
                 ) {
-                    weekHours.forEachIndexed { idx, h ->
-                        val frac = (h.coerceIn(0f, maxH)) / maxH
-
+                    days.forEachIndexed { idx, dow ->
+                        val day = java.time.LocalDate.now()
+                            .with(java.time.temporal.TemporalAdjusters.previousOrSame(dow))
+                        val segs = workSegments[day] ?: emptyList()
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(20.dp)
-                                .padding(vertical = 4.dp)
+                                .height(16.dp)
+                                .padding(vertical = 2.dp)
                         ) {
                             Text(
-                                dayLabels[idx],
+                                labels[idx],
+                                modifier = Modifier.width(24.dp),
                                 fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.secondary,
-                                modifier = Modifier.width(28.dp)
+                                color = MaterialTheme.colorScheme.secondary
                             )
-
-                            Box(
+                            BoxWithConstraints(
                                 modifier = Modifier
-                                    .fillMaxWidth(frac)
-                                    .height(16.dp)
+                                    .weight(1f)
+                                    .height(10.dp)
                                     .background(
-                                        if (h > 0f)
-                                            MaterialTheme.colorScheme.primary
-                                        else
-                                            MaterialTheme.colorScheme.surfaceVariant,
-                                        shape = RoundedCornerShape(4.dp)
+                                        MaterialTheme.colorScheme.surfaceVariant,
+                                        RoundedCornerShape(4.dp)
                                     )
-                            )
-
-                            Spacer(Modifier.width(8.dp))
-
+                            ) {
+                                val totalWidth = constraints.maxWidth.toFloat()
+                                segs.forEach { (startH, endH) ->
+                                    val leftPx = (startH.coerceIn(0f, 24f) / 24f) * totalWidth
+                                    val widthPx = ((endH.coerceIn(0f, 24f) - startH.coerceIn(
+                                        0f,
+                                        24f
+                                    )).coerceAtLeast(0f) / 24f) * totalWidth
+                                    Box(
+                                        modifier = Modifier
+                                            .offset(x = with(density) { leftPx.toDp() })
+                                            .width(with(density) { widthPx.toDp() })
+                                            .fillMaxHeight()
+                                            .background(
+                                                MaterialTheme.colorScheme.primary,
+                                                RoundedCornerShape(4.dp)
+                                            )
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        listOf("0", "6", "12", "18", "24").forEach {
                             Text(
-                                String.format("%.1f h", h),
-                                fontSize = 12.sp,
+                                "$it h",
+                                fontSize = 11.sp,
                                 color = MaterialTheme.colorScheme.secondary
                             )
                         }
                     }
                 }
+
 
                 Spacer(Modifier.height(12.dp))
 
@@ -525,7 +558,11 @@ fun HauptScreen(onOpenSettings: () -> Unit) {
                 Spacer(Modifier.height(12.dp))
                 AbschnittTitel("Urlaub:")
                 Text("Genommen: $urlaubGenommen / $urlaubGesamt Tage", fontSize = 16.sp)
-                Text("Verbleibend: $urlaubVerbleibend Tage", fontSize = 16.sp, color = MaterialTheme.colorScheme.secondary)
+                Text(
+                    "Verbleibend: $urlaubVerbleibend Tage",
+                    fontSize = 16.sp,
+                    color = MaterialTheme.colorScheme.secondary
+                )
 
                 Spacer(Modifier.height(12.dp))
                 AbschnittTitel("Nächste freie Tage:")
@@ -539,7 +576,8 @@ fun HauptScreen(onOpenSettings: () -> Unit) {
                         .filter { it.date.isAfter(java.time.LocalDate.now()) }
                         .take(3)
                 }
-                val formatter = java.time.format.DateTimeFormatter.ofPattern("EEE, dd.MM.yyyy", Locale.GERMAN)
+                val formatter =
+                    java.time.format.DateTimeFormatter.ofPattern("EEE, dd.MM.yyyy", Locale.GERMAN)
 
                 naechsteFeiertage.forEach {
                     val text = "${it.date.format(formatter)} – ${it.description}"
@@ -614,9 +652,11 @@ fun EinstellungenScreen(onClose: () -> Unit) {
             if (urlaubFile.exists()) {
                 try {
                     val type = object : TypeToken<List<Urlaubseintrag>>() {}.type
-                    val daten: List<Urlaubseintrag> = Gson().fromJson(urlaubFile.readText(), type) ?: emptyList()
+                    val daten: List<Urlaubseintrag> =
+                        Gson().fromJson(urlaubFile.readText(), type) ?: emptyList()
                     addAll(daten.sortedBy { it.von })
-                } catch (_: Exception) {}
+                } catch (_: Exception) {
+                }
             }
         }
     }
@@ -645,7 +685,12 @@ fun EinstellungenScreen(onClose: () -> Unit) {
         ) {
             Column(Modifier.padding(12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("JSON-Dateien", fontSize = 16.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                    Text(
+                        "JSON-Dateien",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.weight(1f)
+                    )
                     Text(if (expandedSection == "json") "▲" else "▼", fontSize = 16.sp)
                 }
 
@@ -655,7 +700,9 @@ fun EinstellungenScreen(onClose: () -> Unit) {
                     OutlinedTextField(
                         value = settingsText,
                         onValueChange = { settingsText = it },
-                        modifier = Modifier.fillMaxWidth().height(80.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(80.dp),
                         textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
                         singleLine = false
                     )
@@ -665,7 +712,9 @@ fun EinstellungenScreen(onClose: () -> Unit) {
                     OutlinedTextField(
                         value = stempelText,
                         onValueChange = { stempelText = it },
-                        modifier = Modifier.fillMaxWidth().height(80.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(80.dp),
                         textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
                         singleLine = false
                     )
@@ -675,7 +724,9 @@ fun EinstellungenScreen(onClose: () -> Unit) {
                     OutlinedTextField(
                         value = urlaubText,
                         onValueChange = { urlaubText = it },
-                        modifier = Modifier.fillMaxWidth().height(80.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(80.dp),
                         textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
                         singleLine = false
                     )
@@ -692,10 +743,16 @@ fun EinstellungenScreen(onClose: () -> Unit) {
                 Spacer(Modifier.height(8.dp))
 
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { showVonPicker = true }, modifier = Modifier.weight(1f)) {
+                    OutlinedButton(
+                        onClick = { showVonPicker = true },
+                        modifier = Modifier.weight(1f)
+                    ) {
                         Text(if (vonDatum.isEmpty()) "Von" else vonDatum, fontSize = 13.sp)
                     }
-                    OutlinedButton(onClick = { showBisPicker = true }, modifier = Modifier.weight(1f)) {
+                    OutlinedButton(
+                        onClick = { showBisPicker = true },
+                        modifier = Modifier.weight(1f)
+                    ) {
                         Text(if (bisDatum.isEmpty()) "Bis" else bisDatum, fontSize = 13.sp)
                     }
                 }
@@ -736,7 +793,9 @@ fun EinstellungenScreen(onClose: () -> Unit) {
                             statusColor = errorColor
                         }
                     },
-                    modifier = Modifier.fillMaxWidth().height(44.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(44.dp)
                 ) { Text("Hinzufügen") }
             }
         }
@@ -752,7 +811,11 @@ fun EinstellungenScreen(onClose: () -> Unit) {
                         showVonPicker = false
                     }) { Text("OK") }
                 },
-                dismissButton = { TextButton(onClick = { showVonPicker = false }) { Text("Abbrechen") } }
+                dismissButton = {
+                    TextButton(onClick = {
+                        showVonPicker = false
+                    }) { Text("Abbrechen") }
+                }
             ) { DatePicker(state = state) }
         }
 
@@ -766,7 +829,11 @@ fun EinstellungenScreen(onClose: () -> Unit) {
                         showBisPicker = false
                     }) { Text("OK") }
                 },
-                dismissButton = { TextButton(onClick = { showBisPicker = false }) { Text("Abbrechen") } }
+                dismissButton = {
+                    TextButton(onClick = {
+                        showBisPicker = false
+                    }) { Text("Abbrechen") }
+                }
             ) { DatePicker(state = state) }
         }
 
@@ -775,11 +842,19 @@ fun EinstellungenScreen(onClose: () -> Unit) {
         // Urlaubsliste
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(12.dp)) {
-                Text("Urlaubsliste (${urlaubsliste.size})", fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                Text(
+                    "Urlaubsliste (${urlaubsliste.size})",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium
+                )
                 Spacer(Modifier.height(8.dp))
 
                 if (urlaubsliste.isEmpty()) {
-                    Text("Keine Einträge", color = MaterialTheme.colorScheme.secondary, fontSize = 14.sp)
+                    Text(
+                        "Keine Einträge",
+                        color = MaterialTheme.colorScheme.secondary,
+                        fontSize = 14.sp
+                    )
                 } else {
                     urlaubsliste.sortedBy { it.von }.forEach {
                         Text("${it.von} – ${it.bis} · ${it.tage}T", fontSize = 14.sp)
@@ -792,7 +867,10 @@ fun EinstellungenScreen(onClose: () -> Unit) {
         Spacer(Modifier.height(10.dp))
 
         // Aktionsbuttons
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
             Button(
                 onClick = {
                     try {
@@ -813,10 +891,14 @@ fun EinstellungenScreen(onClose: () -> Unit) {
                         statusColor = errorColor
                     }
                 },
-                modifier = Modifier.weight(1f).height(48.dp)
+                modifier = Modifier
+                    .weight(1f)
+                    .height(48.dp)
             ) { Text("Speichern") }
 
-            OutlinedButton(onClick = onClose, modifier = Modifier.weight(1f).height(48.dp)) {
+            OutlinedButton(onClick = onClose, modifier = Modifier
+                .weight(1f)
+                .height(48.dp)) {
                 Text("Schließen")
             }
         }
@@ -829,7 +911,9 @@ fun EinstellungenScreen(onClose: () -> Unit) {
                 statusText = meldung
                 statusColor = primaryColor
             },
-            modifier = Modifier.fillMaxWidth().height(48.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
         ) { Text("Backup erstellen") }
 
         if (statusText.isNotEmpty()) {
