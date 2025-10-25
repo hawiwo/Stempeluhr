@@ -33,11 +33,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.platform.LocalDensity
-import android.os.Environment
-import android.content.Intent
-import android.net.Uri
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 
 // ----------------------------------------------------------
 // Datenklassen
@@ -652,18 +647,6 @@ fun EinstellungenScreen(onClose: () -> Unit) {
     var statusColor by remember { mutableStateOf(primaryColor) }
     var expandedSection by remember { mutableStateOf<String?>(null) }
 
-    val launcher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri ->
-        if (uri != null) {
-            val meldung = restoreBackup(context, uri)
-            statusText = meldung
-            statusColor = primaryColor
-        } else {
-            statusText = "Kein Backup ausgewählt"
-            statusColor = errorColor
-        }
-    }
     val urlaubsliste = remember {
         mutableStateListOf<Urlaubseintrag>().apply {
             if (urlaubFile.exists()) {
@@ -921,35 +904,23 @@ fun EinstellungenScreen(onClose: () -> Unit) {
         }
 
         Spacer(Modifier.height(8.dp))
-// Aktionsbuttons (Backup + Restore)
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            OutlinedButton(
-                onClick = {
-                    val meldung = backupDateien(context.applicationContext)
-                    statusText = meldung
-                    statusColor = primaryColor
-                },
-                modifier = Modifier
-                    .weight(1f)
-                    .height(44.dp)
-            ) { Text("Backup") }
 
+        OutlinedButton(
+            onClick = {
+                val meldung = backupDateien(context.applicationContext)
+                statusText = meldung
+                statusColor = primaryColor
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+        ) { Text("Backup erstellen") }
 
-            OutlinedButton(
-                onClick = { launcher.launch("application/zip") },
-                modifier = Modifier
-                    .weight(1f)
-                    .height(44.dp)
-            ) { Text("Restore") }
-
-        }
         if (statusText.isNotEmpty()) {
             Spacer(Modifier.height(8.dp))
             Text(statusText, color = statusColor, fontSize = 14.sp)
         }
+
         Spacer(Modifier.height(10.dp))
     }
 }

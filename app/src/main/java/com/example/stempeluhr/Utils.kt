@@ -1,6 +1,7 @@
 package com.example.stempeluhr
 
 import android.content.Context
+import android.net.Uri
 import android.os.Environment
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
@@ -8,6 +9,10 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.abs
+import java.io.*
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
+import java.util.zip.ZipInputStream
 
 fun formatDateYMD(millis: Long?): String {
     if (millis == null) return ""
@@ -23,6 +28,47 @@ fun formatMinutenAsText(minuten: Int): String {
     return (if (neg) "-" else "+") + "%d:%02d".format(h, m)
 }
 
+fun zipDirectory(directory: File) {
+    if (!directory.isDirectory) return
+
+    val zipFile = File(directory.parentFile, "${directory.name}.zip")
+    FileOutputStream(zipFile).use { fos ->
+        ZipOutputStream(BufferedOutputStream(fos)).use { zos ->
+            directory.walkTopDown().filter { it.isFile }.forEach { file ->
+                val entryName = file.relativeTo(directory).path
+                zos.putNextEntry(ZipEntry(entryName))
+                file.inputStream().use { it.copyTo(zos) }
+                zos.closeEntry()
+            }
+        }
+    }
+
+    println("ZIP-Datei erstellt: ${zipFile.absolutePath}")
+}
+
+fun restoreBackup(context: Context, zipUri: Uri): String {
+    return try {
+        val zielDir = context.filesDir
+        val input = context.contentResolver.openInputStream(zipUri)
+            ?: return "Fehler: ZIP-Datei konnte nicht geöffnet werden"
+
+        ZipInputStream(BufferedInputStream(input)).use { zis ->
+            var entry = zis.nextEntry
+            while (entry != null) {
+                if (!entry.isDirectory && entry.name.endsWith(".json")) {
+                    val outFile = File(zielDir, entry.name)
+                    FileOutputStream(outFile).use { fos -> zis.copyTo(fos) }
+                }
+                entry = zis.nextEntry
+            }
+        }
+        "Restore abgeschlossen"
+    } catch (e: Exception) {
+        "Fehler beim Restore: ${e.message}"
+    }
+}
+
+
 fun backupDateien(context: Context): String {
     val quelleDir = context.filesDir
     val downloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
@@ -30,15 +76,27 @@ fun backupDateien(context: Context): String {
     if (!zielDir.exists()) zielDir.mkdirs()
 
     val zeitstempel = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.getDefault()).format(Date())
-    val stempelFile = File(quelleDir, "stempel.json")
-    val settingsFile = File(quelleDir, "settings.json")
-    val urlaubFile = File(quelleDir, "urlaub.json")
+    val zipFile = File(zielDir, "backup_$zeitstempel.zip")
+
+    val dateien = listOf(
+        File(quelleDir, "stempel.json"),
+        File(quelleDir, "settings.json"),
+        File(quelleDir, "urlaub.json")
+    ).filter { it.exists() }
+
+    if (dateien.isEmpty()) return "Keine Dateien zum Sichern gefunden."
 
     return try {
-        if (stempelFile.exists()) stempelFile.copyTo(File(zielDir, "stempel_$zeitstempel.json"), overwrite = true)
-        if (settingsFile.exists()) settingsFile.copyTo(File(zielDir, "settings_$zeitstempel.json"), overwrite = true)
-        if (urlaubFile.exists()) urlaubFile.copyTo(File(zielDir, "urlaub_$zeitstempel.json"), overwrite = true)
-        "Backup gespeichert unter: ${zielDir.path}"
+        FileOutputStream(zipFile).use { fos ->
+            ZipOutputStream(BufferedOutputStream(fos)).use { zos ->
+                dateien.forEach { file ->
+                    zos.putNextEntry(ZipEntry(file.name))
+                    file.inputStream().use { it.copyTo(zos) }
+                    zos.closeEntry()
+                }
+            }
+        }
+        "Backup erstellt: ${zipFile.absolutePath}"
     } catch (e: Exception) {
         "Fehler beim Backup: ${e.message}"
     }
