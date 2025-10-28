@@ -68,6 +68,70 @@ fun restoreBackup(context: Context, zipUri: Uri): String {
     }
 }
 
+fun istFeiertagBW(cal: Calendar): Boolean {
+    val jahr = cal.get(Calendar.YEAR)
+    val easter = berechneOstersonntag(jahr)
+
+    val feste = listOf(
+        "01-01", // Neujahr
+        "01-06", // Heilige Drei Könige
+        "05-01", // Tag der Arbeit
+        "10-03", // Tag der Deutschen Einheit
+        "11-01", // Allerheiligen
+        "12-25", // 1. Weihnachtstag
+        "12-26"  // 2. Weihnachtstag
+    )
+
+    val bewegliche = listOf(
+        addDays(easter, -2),  // Karfreitag
+        addDays(easter, 1),   // Ostermontag
+        addDays(easter, 39),  // Christi Himmelfahrt
+        addDays(easter, 50),  // Pfingstmontag
+        addDays(easter, 60)   // Fronleichnam
+    )
+
+    val monatTag = String.format("%02d-%02d", cal.get(Calendar.MONTH) + 1, cal.get(Calendar.DAY_OF_MONTH))
+
+    if (feste.contains(monatTag)) return true
+    return bewegliche.any {
+        it.get(Calendar.YEAR) == jahr &&
+                it.get(Calendar.MONTH) == cal.get(Calendar.MONTH) &&
+                it.get(Calendar.DAY_OF_MONTH) == cal.get(Calendar.DAY_OF_MONTH)
+    }
+}
+
+fun formatCalToPair(cal: Calendar): Pair<Int, String> {
+    return Pair(
+        cal.get(Calendar.YEAR),
+        String.format("%02d-%02d", cal.get(Calendar.MONTH) + 1, cal.get(Calendar.DAY_OF_MONTH))
+    )
+}
+
+fun addDays(cal: Calendar, days: Int): Calendar {
+    val copy = cal.clone() as Calendar
+    copy.add(Calendar.DAY_OF_YEAR, days)
+    return copy
+}
+
+fun berechneOstersonntag(jahr: Int): Calendar {
+    val a = jahr % 19
+    val b = jahr / 100
+    val c = jahr % 100
+    val d = b / 4
+    val e = b % 4
+    val f = (b + 8) / 25
+    val g = (b - f + 1) / 3
+    val h = (19 * a + b - d - g + 15) % 30
+    val i = c / 4
+    val k = c % 4
+    val l = (32 + 2 * e + 2 * i - h - k) % 7
+    val m = (a + 11 * h + 22 * l) / 451
+    val monat = (h + l - 7 * m + 114) / 31
+    val tag = ((h + l - 7 * m + 114) % 31) + 1
+    val cal = Calendar.getInstance()
+    cal.set(jahr, monat - 1, tag)
+    return cal
+}
 
 fun backupDateien(context: Context): String {
     val quelleDir = context.filesDir
@@ -107,23 +171,16 @@ fun testBerechnung(context: Context) {
 
     val gson = Gson()
     val stempelFile = File(context.filesDir, "stempel.json")
-    val settingsFile = File(context.filesDir, "settings.json")
-
-    if (!stempelFile.exists() || !settingsFile.exists()) {
-        println("Fehler: Dateien fehlen")
-        return
-    }
 
     val stempelListe: List<Stempel> =
         gson.fromJson(stempelFile.readText(), object : TypeToken<List<Stempel>>() {}.type)
-    val einstellungen = gson.fromJson(settingsFile.readText(), Einstellungen::class.java)
 
     val jetzt = Date()
     val result = berechneAlleZeiten(stempelListe, null, false, context)
 
     println("=== DEBUG AUSGABE ===")
-    println("Stichtag: ${einstellungen.standDatum}")
-    println("Startwert (Minuten): ${einstellungen.startwertMinuten}")
+    //println("Stichtag: ${einstellungen.standDatum}")
+    //println("Startwert (Minuten): ${einstellungen.startwertMinuten}")
     println("Heute: ${result.heute}")
     println("Woche: ${result.woche}")
     println("Monat: ${result.monat}")

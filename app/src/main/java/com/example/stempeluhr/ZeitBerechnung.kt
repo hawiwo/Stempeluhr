@@ -6,6 +6,8 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.floor
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 
 fun parseDateFlexible(s: String): Date? {
     val formats = listOf(
@@ -61,22 +63,26 @@ fun berechneAlleZeiten(
 }
 
 private fun ladeEinstellungen(context: Context, tagFormat: SimpleDateFormat): Pair<Int, Date?> {
-    val settingsFile = File(context.filesDir, "settings.json")
-    var startwertMinuten = 0
+    val settingsRepo = SettingsRepository(context)
+    var startwert = 0
+    var standDatumStr = ""
     var standDatum: Date? = null
 
-    if (settingsFile.exists()) {
-        try {
-            val einstellungen = Gson().fromJson(settingsFile.readText(), Einstellungen::class.java)
-            startwertMinuten = einstellungen.startwertMinuten
-            if (einstellungen.standDatum.isNotBlank()) {
-                standDatum = tagFormat.parse(einstellungen.standDatum)
-            }
-        } catch (_: Exception) {}
+    runBlocking {
+        startwert = settingsRepo.startwertFlow.first()
+        standDatumStr = settingsRepo.standDatumFlow.first()
     }
-    return Pair(startwertMinuten, standDatum)
-}
 
+    if (standDatumStr.isNotEmpty()) {
+        try {
+            standDatum = tagFormat.parse(standDatumStr)
+        } catch (_: Exception) {
+            standDatum = null
+        }
+    }
+
+    return Pair(startwert, standDatum)
+}
 private fun korrigiereWochenenden(standDatum: Date?): Date? {
     if (standDatum == null) return null
     val cal = Calendar.getInstance().apply { time = standDatum }

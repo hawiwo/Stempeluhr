@@ -7,13 +7,12 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.Date
-import com.example.feiertage.holeFeiertageBW
 
 data class ZeiterfassungState(
     val statusText: String = "Noch nicht eingestempelt",
@@ -36,75 +35,60 @@ data class ZeiterfassungState(
 class StempelViewModel(app: Application) : AndroidViewModel(app) {
 
     private val gson = Gson()
-    private val context = app.applicationContext
-
+    private val context = getApplication<Application>().applicationContext
     private val logFile = File(context.filesDir, "stempel.json")
-    private val settingsFile = File(context.filesDir, "settings.json")
-    private val urlaubFile = File(context.filesDir, "urlaub.json")
 
-    private val _state = MutableStateFlow(ZeiterfassungState())
-    val state: StateFlow<ZeiterfassungState> = _state
+    private val _state = kotlinx.coroutines.flow.MutableStateFlow(ZeiterfassungState())
+    val state: kotlinx.coroutines.flow.StateFlow<ZeiterfassungState> = _state
+
+    private val settingsRepo = SettingsRepository(context)
+    private val urlaubRepo = UrlaubRepository(UrlaubDatabase.getDatabase(context).urlaubDao())
 
     init {
         viewModelScope.launch {
-            ladeAlleDaten()             // erst Daten laden
-            refreshCalculationsOnce()   // dann sofort berechnen
-            startAutoRefresh()          // danach alle 60s
+            ladeAlleDaten()
+            refreshCalculationsOnce()
+            startAutoRefresh()
         }
-    }
-
-
-    private fun startAutoRefresh() {
         viewModelScope.launch {
-            while (isActive) {
-                delay(60_000)
-                refreshCalculationsOnce()
+            settingsRepo.homeofficeFlow.collect { aktiv: Boolean ->
+                _state.value = _state.value.copy(homeofficeAktiv = aktiv)
+            }
+        }
+        viewModelScope.launch {
+            urlaubRepo.alleEintraege.collect { liste ->
+                val urlaubGenommen = liste.sumOf { it.tage }
+                val urlaubVerbleibend = _state.value.urlaubGesamt - urlaubGenommen
+                _state.value = _state.value.copy(
+                    urlaubGenommen = urlaubGenommen,
+                    urlaubVerbleibend = urlaubVerbleibend
+                )
             }
         }
     }
 
-    private fun ladeAlleDaten() {
-        viewModelScope.launch(Dispatchers.IO) {
+    private suspend fun ladeAlleDaten() {
+        withContext(Dispatchers.IO) {
             val stempelListe = leseListe<Stempel>(logFile)
-            val urlaubsliste = leseListe<Urlaubseintrag>(urlaubFile)
-
-            var homeofficeAktiv = false
-            if (settingsFile.exists()) {
-                try {
-                    val map = gson.fromJson<Map<String, Any>>(
-                        settingsFile.readText(),
-                        object : TypeToken<Map<String, Any>>() {}.type
-                    )
-                    homeofficeAktiv = (map["homeofficeAktiv"] as? Boolean) ?: false
-                } catch (_: Exception) {}
-            }
-
-            val urlaubGenommen = urlaubsliste.sumOf { it.tage }
-            val urlaubVerbleibend = 30 - urlaubGenommen
-
             val letzter = stempelListe.lastOrNull()
-            val (eingestempelt, eingestempeltSeit, status) = if (letzter?.typ == "Start") {
-                Triple(true, parseDateFlexible(letzter.zeit), "Eingestempelt seit ${letzter.zeit.substring(11)}")
-            } else {
-                Triple(false, null, "Ausgestempelt")
-            }
+            val eingestempelt = letzter?.typ == "Start"
+            val eingestempeltSeit = if (eingestempelt) parseDateFlexible(letzter!!.zeit) else null
+            val statusText = if (eingestempelt) "Eingestempelt seit ${letzter!!.zeit.substring(11)}" else "Ausgestempelt"
+            val startwert = settingsRepo.startwertFlow.first()
+            val standDatum = settingsRepo.standDatumFlow.first()
+            val homeoffice = settingsRepo.homeofficeFlow.first()
 
             _state.value = _state.value.copy(
                 stempelListe = stempelListe,
                 istEingestempelt = eingestempelt,
                 eingestempeltSeit = eingestempeltSeit,
-                statusText = status,
-                urlaubGenommen = urlaubGenommen,
-                urlaubVerbleibend = urlaubVerbleibend,
-                homeofficeAktiv = homeofficeAktiv
+                statusText = statusText,
+                homeofficeAktiv = homeoffice,
+                startwertAnzeige = if (startwert != 0) "$startwert min" else "",
+                standDatumAnzeige = standDatum
             )
-
-            // 👉 wenn Daten geladen sind, sofort berechnen
-            refreshCalculationsOnce()
         }
     }
-
-
 
     private inline fun <reified T> leseListe(file: File): List<T> {
         if (!file.exists()) return emptyList()
@@ -116,36 +100,13 @@ class StempelViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun starteTicker() {
+    private fun startAutoRefresh() {
         viewModelScope.launch {
-            while (true) {
-                try {
-                    val s = _state.value
-                    val zeiten = berechneAlleZeiten(
-                        s.stempelListe.toMutableList(),
-                        s.eingestempeltSeit,
-                        s.istEingestempelt,
-                        context
-                    )
-                    _state.value = s.copy(
-                        arbeitsdauerHeute = zeiten.heute,
-                        arbeitsdauerWoche = zeiten.woche,
-                        arbeitsdauerMonat = zeiten.monat,
-                        arbeitsdauerJahr = zeiten.jahr,
-                        ueberstundenText = zeiten.ueberstunden,
-                        startwertAnzeige = zeiten.startwert,
-                        standDatumAnzeige = zeiten.standDatum
-                    )
-                } catch (_: Exception) {
-                }
+            while (isActive) {
+                refreshCalculationsOnce()
                 delay(60_000)
             }
         }
-    }
-
-    private fun refreshFromDisk() {
-        val updated = leseListe<Stempel>(logFile)
-        _state.value = _state.value.copy(stempelListe = updated)
     }
 
     fun refreshCalculationsOnce() {
@@ -172,7 +133,6 @@ class StempelViewModel(app: Application) : AndroidViewModel(app) {
     fun toggleStempel() {
         val s = _state.value
         val jetzt = Date()
-
         if (s.istEingestempelt) {
             addStempel("Ende", s.stempelListe.toMutableList(), gson, logFile, s.homeofficeAktiv)
             refreshFromDisk()
@@ -188,28 +148,20 @@ class StempelViewModel(app: Application) : AndroidViewModel(app) {
             _state.value = _state.value.copy(
                 istEingestempelt = true,
                 eingestempeltSeit = jetzt,
-                statusText = "Eingestempelt seit " + java.text.SimpleDateFormat("HH:mm")
-                    .format(jetzt)
+                statusText = "Eingestempelt seit " + java.text.SimpleDateFormat("HH:mm").format(jetzt)
             )
             refreshCalculationsOnce()
         }
     }
 
-    fun toggleHomeoffice(aktiv: Boolean) {
-        val s = _state.value
-        _state.value = s.copy(homeofficeAktiv = aktiv)
+    private fun refreshFromDisk() {
+        val updated = leseListe<Stempel>(logFile)
+        _state.value = _state.value.copy(stempelListe = updated)
+    }
 
-        try {
-            val jsonText = if (settingsFile.exists()) settingsFile.readText() else "{}"
-            val map = Gson().fromJson<MutableMap<String, Any>>(
-                jsonText,
-                object : com.google.gson.reflect.TypeToken<MutableMap<String, Any>>() {}.type
-            ) ?: mutableMapOf()
-            map["homeofficeAktiv"] = aktiv
-            settingsFile.writeText(Gson().toJson(map))
-        } catch (e: Exception) {
-            e.printStackTrace()
+    fun toggleHomeoffice(aktiv: Boolean) {
+        viewModelScope.launch {
+            settingsRepo.setHomeoffice(aktiv)
         }
     }
 }
-
