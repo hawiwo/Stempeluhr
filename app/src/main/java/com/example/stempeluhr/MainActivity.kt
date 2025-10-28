@@ -2,42 +2,72 @@ package com.example.stempeluhr
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.*
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import java.io.File
-import java.util.*
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.ui.graphics.Color
 import java.text.SimpleDateFormat
-import com.example.feiertage.holeFeiertageBW
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.background
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.offset
+import java.util.Calendar
+import java.util.Locale
+import java.util.Date
 import androidx.compose.ui.platform.LocalDensity
-import android.os.Environment
-import android.content.Intent
-import android.net.Uri
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.*
+import androidx.compose.foundation.shape.*
+import androidx.activity.viewModels
+import com.example.feiertage.holeFeiertageBW
 
 // ----------------------------------------------------------
 // Datenklassen
@@ -60,28 +90,23 @@ data class Urlaubseintrag(
 // Hauptaktivität
 // ----------------------------------------------------------
 class MainActivity : ComponentActivity() {
-    /* Logcat debug
-        override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        WindowCompat.setDecorFitsSystemWindows(window, true)
-
-        // 👇 Testlauf
-        testBerechnung(this)
-
-        setContent { StempeluhrApp() }
-    }
-    */
+    private val viewModel: StempelViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, true)
         setContent { StempeluhrApp() }
     }
-}
 
+    override fun onResume() {
+        super.onResume()
+        viewModel.refreshCalculationsOnce()
+    }
+}
 // ----------------------------------------------------------
 // Haupt-App-Struktur
 // ----------------------------------------------------------
+
 @Composable
 fun StempeluhrApp() {
     var zeigeEinstellungen by remember { mutableStateOf(false) }
@@ -106,126 +131,11 @@ fun AbschnittTitel(text: String) {
 }
 
 @Composable
-fun HauptScreen(onOpenSettings: () -> Unit) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val gson = remember { Gson() }
-    val logFile = remember { File(context.filesDir, "stempel.json") }
-    val settingsFile = remember { File(context.filesDir, "settings.json") }
-    val urlaubFile = remember { File(context.filesDir, "urlaub.json") }
-    val stempelListe = remember { mutableStateListOf<Stempel>() }
-    val format = remember { SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()) }
-
-    var statusText by remember { mutableStateOf("Noch nicht eingestempelt") }
-    var istEingestempelt by remember { mutableStateOf(false) }
-    var eingestempeltSeit by remember { mutableStateOf<Date?>(null) }
-    var homeofficeAktiv by remember { mutableStateOf(false) }
-
-    var arbeitsdauerHeute by remember { mutableStateOf("") }
-    var arbeitsdauerWoche by remember { mutableStateOf("") }
-    var arbeitsdauerMonat by remember { mutableStateOf("") }
-    var arbeitsdauerJahr by remember { mutableStateOf("") }
-    var ueberstundenText by remember { mutableStateOf("") }
-    var startwertAnzeige by remember { mutableStateOf("") }
-    var standDatumAnzeige by remember { mutableStateOf("") }
-
-    // Urlaub
-    var urlaubGesamt by remember { mutableStateOf(30) }
-    var urlaubGenommen by remember { mutableStateOf(0) }
-    var urlaubVerbleibend by remember { mutableStateOf(urlaubGesamt) }
-
-    // Homeoffice-Status laden
-    LaunchedEffect(Unit) {
-        if (settingsFile.exists()) {
-            try {
-                val jsonText = settingsFile.readText()
-                val map = Gson().fromJson<MutableMap<String, Any>>(
-                    jsonText,
-                    object : TypeToken<MutableMap<String, Any>>() {}.type
-                )
-                homeofficeAktiv = (map["homeofficeAktiv"] as? Boolean) ?: false
-            } catch (_: Exception) {
-            }
-        }
-    }
-
-    fun speichereHomeofficeStatus(aktiv: Boolean) {
-        try {
-            val jsonText = if (settingsFile.exists()) settingsFile.readText() else "{}"
-            val map = Gson().fromJson<MutableMap<String, Any>>(
-                jsonText,
-                object : TypeToken<MutableMap<String, Any>>() {}.type
-            ) ?: mutableMapOf()
-            map["homeofficeAktiv"] = aktiv
-            settingsFile.writeText(Gson().toJson(map))
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    // JSON laden
-    LaunchedEffect(Unit) {
-        try {
-            if (logFile.exists()) {
-                val text = logFile.readText()
-                val type = object : TypeToken<List<Stempel>>() {}.type
-                val geleseneListe: List<Stempel> =
-                    if (text.isNotBlank()) try {
-                        Gson().fromJson(text, type) ?: emptyList()
-                    } catch (_: Exception) {
-                        emptyList()
-                    } else emptyList()
-                stempelListe.clear()
-                stempelListe.addAll(geleseneListe)
-            }
-
-            if (urlaubFile.exists()) {
-                try {
-                    val json = urlaubFile.readText()
-                    val type = object : TypeToken<List<Urlaubseintrag>>() {}.type
-                    val liste: List<Urlaubseintrag> = Gson().fromJson(json, type)
-                    urlaubGenommen = liste.sumOf { it.tage }
-                    urlaubVerbleibend = urlaubGesamt - urlaubGenommen
-                } catch (_: Exception) {
-                }
-            }
-
-            if (stempelListe.isNotEmpty()) {
-                val letzter = stempelListe.last()
-                if (letzter.typ == "Start") {
-                    istEingestempelt = true
-                    eingestempeltSeit = parseDateFlexible(letzter.zeit)
-                    statusText = "Eingestempelt seit ${letzter.zeit.substring(11)}"
-                } else {
-                    istEingestempelt = false
-                    statusText = "Ausgestempelt"
-                }
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            logFile.writeText("[]")
-            stempelListe.clear()
-        }
-    }
-
-    // Live-Aktualisierung
-    LaunchedEffect(istEingestempelt, eingestempeltSeit, stempelListe.size) {
-        while (isActive) {
-            try {
-                val zeiten =
-                    berechneAlleZeiten(stempelListe, eingestempeltSeit, istEingestempelt, context)
-                arbeitsdauerHeute = zeiten.heute
-                arbeitsdauerWoche = zeiten.woche
-                arbeitsdauerMonat = zeiten.monat
-                arbeitsdauerJahr = zeiten.jahr
-                startwertAnzeige = zeiten.startwert
-                standDatumAnzeige = zeiten.standDatum
-                ueberstundenText = zeiten.ueberstunden
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-            delay(60_000)
-        }
-    }
+fun HauptScreen(
+    viewModel: StempelViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
+    onOpenSettings: () -> Unit
+) {
+    val state by viewModel.state.collectAsState()
 
     Column(
         modifier = Modifier
@@ -235,396 +145,296 @@ fun HauptScreen(onOpenSettings: () -> Unit) {
         verticalArrangement = Arrangement.SpaceBetween
     ) {
         Column {
+            HeaderSection(
+                homeoffice = state.homeofficeAktiv,
+                onHomeofficeChange = viewModel::toggleHomeoffice,
+                onOpenSettings = onOpenSettings
+            )
+
+            Spacer(Modifier.height(12.dp))
+            BodySection(state)
+        }
+
+        Button(
+            onClick = { viewModel.toggleStempel() },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(80.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = if (state.istEingestempelt)
+                    MaterialTheme.colorScheme.error
+                else
+                    MaterialTheme.colorScheme.primary
+            )
+        ) {
+            Text(if (state.istEingestempelt) "Ende" else "Start", fontSize = 22.sp)
+        }
+    }
+}
+@Composable
+fun HeaderSection(
+    homeoffice: Boolean,
+    onHomeofficeChange: (Boolean) -> Unit,
+    onOpenSettings: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column {
+            Text("Stempeluhr", fontSize = 28.sp, fontWeight = FontWeight.Bold)
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(top = 24.dp)
             ) {
-                Column {
-                    Text(
-                        "Stempeluhr",
-                        fontSize = 28.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(top = 24.dp)
-                    ) {
-                        Checkbox(
-                            checked = homeofficeAktiv,
-                            onCheckedChange = {
-                                homeofficeAktiv = it
-                                speichereHomeofficeStatus(it)
-                            },
-                            modifier = Modifier
-                                .size(24.dp)
-                                .offset(y = (-2).dp)
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text("Homeoffice", fontSize = 18.sp)
-                    }
-                }
-
-                IconButton(onClick = onOpenSettings) {
-                    Icon(Icons.Default.Settings, contentDescription = "Einstellungen")
-                }
+                Checkbox(
+                    checked = homeoffice,
+                    onCheckedChange = onHomeofficeChange,
+                    modifier = Modifier.size(24.dp).offset(y = (-2).dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text("Homeoffice", fontSize = 18.sp)
             }
+        }
+        IconButton(onClick = onOpenSettings) {
+            Icon(Icons.Default.Settings, contentDescription = "Einstellungen")
+        }
+    }
+}
+@Composable
+fun BodySection(state: ZeiterfassungState) {
+    Text(state.statusText, fontSize = 20.sp)
+    Spacer(Modifier.height(6.dp))
 
-            Spacer(Modifier.height(6.dp))
-            Text(statusText, fontSize = 20.sp)
-            Spacer(Modifier.height(6.dp))
+    if (state.arbeitsdauerHeute.isNotEmpty()) {
+        ArbeitszeitFortschritt(heute = state.arbeitsdauerHeute, woche = state.arbeitsdauerWoche)
+        Spacer(Modifier.height(12.dp))
+        Text("Diesen Monat: ${state.arbeitsdauerMonat}", fontSize = 18.sp)
+        Text("Dieses Jahr: ${state.arbeitsdauerJahr}", fontSize = 18.sp)
+        Spacer(Modifier.height(12.dp))
+        WochenUebersicht(
+            stempelListe = state.stempelListe,
+            istEingestempelt = state.istEingestempelt,
+            eingestempeltSeit = state.eingestempeltSeit
+        )
+        Spacer(Modifier.height(12.dp))
+        if (state.ueberstundenText.isNotEmpty()) {
+            val color = if (state.ueberstundenText.startsWith("-")) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+            val label = if (state.ueberstundenText.startsWith("-")) "Minusstunden" else "Überstunden"
+            Text("$label: ${state.ueberstundenText}", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = color)
+        }
+        if (state.startwertAnzeige.isNotEmpty()) {
+            val datumText = if (state.standDatumAnzeige.isNotEmpty()) " (${state.standDatumAnzeige})" else ""
+            Text("(inkl. Startwert ${state.startwertAnzeige}$datumText)", fontSize = 16.sp, color = MaterialTheme.colorScheme.secondary)
+        }
+        Spacer(Modifier.height(12.dp))
+        UrlaubSection(genommen = state.urlaubGenommen, verbleibend = state.urlaubVerbleibend, gesamt = state.urlaubGesamt)
+        Spacer(Modifier.height(12.dp))
+        AbschnittTitel("Nächste freie Tage:")
 
-            if (arbeitsdauerHeute.isNotEmpty()) {
-                // Text("Heute: $arbeitsdauerHeute", fontSize = 18.sp)
-                // Text("Diese Woche: $arbeitsdauerWoche", fontSize = 18.sp)
-                Text("Diesen Monat: $arbeitsdauerMonat", fontSize = 18.sp)
-                Text("Dieses Jahr: $arbeitsdauerJahr", fontSize = 18.sp)
+        val aktuelleFeiertage = remember { holeFeiertageBW().sortedBy { it.date } }
+        val heute = java.time.LocalDate.now()
+        val naechsteFeiertage = remember {
+            aktuelleFeiertage.filter { it.date.isAfter(heute) }.take(3)
+        }
+        val formatter = java.time.format.DateTimeFormatter.ofPattern("EEE, dd.MM.yyyy", Locale.GERMAN)
 
-// Fortschrittsanzeigen für Tag und Woche
-                val regex = Regex("(\\d+)h\\s*(\\d+)?min?")
+        naechsteFeiertage.forEach {
+            val text = "${it.date.format(formatter)} – ${it.description}"
+            Text(
+                text = text,
+                fontSize = 16.sp,
+                color = MaterialTheme.colorScheme.secondary
+            )
+        }
 
-                fun parseMinutes(text: String): Int {
-                    val m = regex.find(text)
-                    val h = m?.groupValues?.get(1)?.toIntOrNull() ?: 0
-                    val min = m?.groupValues?.get(2)?.toIntOrNull() ?: 0
-                    return h * 60 + min
-                }
+    }
+}
+@Composable
+fun WochenUebersicht(
+    stempelListe: List<Stempel>,
+    istEingestempelt: Boolean,
+    eingestempeltSeit: Date?
+) {
+    val days = listOf(
+        java.time.DayOfWeek.MONDAY,
+        java.time.DayOfWeek.TUESDAY,
+        java.time.DayOfWeek.WEDNESDAY,
+        java.time.DayOfWeek.THURSDAY,
+        java.time.DayOfWeek.FRIDAY,
+        java.time.DayOfWeek.SATURDAY,
+        java.time.DayOfWeek.SUNDAY
+    )
+    val labels = listOf("Mo", "Di", "Mi", "Do", "Fr", "Sa", "So")
+    val density = LocalDensity.current
 
-                val minutenHeute = parseMinutes(arbeitsdauerHeute)
-                val minutenWoche = parseMinutes(arbeitsdauerWoche)
-
-                val fortschrittHeute = minutenHeute / 480f
-                val fortschrittWoche = minutenWoche / 2400f
-
-                val progressHeute = fortschrittHeute % 1f
-                val progressWoche = fortschrittWoche % 1f
-
-                val animatedHeute = animateFloatAsState(
-                    targetValue = progressHeute,
-                    animationSpec = tween(durationMillis = 800)
-                ).value
-                val animatedWoche = animateFloatAsState(
-                    targetValue = progressWoche,
-                    animationSpec = tween(durationMillis = 800)
-                ).value
-
-                @Composable
-                fun farbe(progress: Float): Color {
-                    return if (progress <= 1f) {
-                        androidx.compose.ui.graphics.lerp(Color.Red, Color(0f, 0.6f, 0f), progress)
-                    } else {
-                        Color(0f, 0.6f, 0f)
-                    }
-                }
-
-                Spacer(Modifier.height(12.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // --- Tagesfortschritt ---
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Box(
-                            contentAlignment = Alignment.Center,
-                            modifier = Modifier
-                                .size(100.dp)
-                                .clickable {
-                                    // manuelles Neuberechnen der Arbeitszeiten
-                                    val zeiten = berechneAlleZeiten(
-                                        stempelListe,
-                                        eingestempeltSeit,
-                                        istEingestempelt,
-                                        context
-                                    )
-                                    arbeitsdauerHeute = zeiten.heute
-                                    arbeitsdauerWoche = zeiten.woche
-                                    arbeitsdauerMonat = zeiten.monat
-                                    arbeitsdauerJahr = zeiten.jahr
-                                    startwertAnzeige = zeiten.startwert
-                                    standDatumAnzeige = zeiten.standDatum
-                                    ueberstundenText = zeiten.ueberstunden
-                                }
-                        ) {
-                            CircularProgressIndicator(
-                                progress = animatedHeute,
-                                strokeWidth = 10.dp,
-                                color = farbe(fortschrittHeute),
-                                modifier = Modifier.matchParentSize()
-                            )
-                            Text(
-                                text = String.format("%.0f%%", fortschrittHeute * 100),
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = farbe(fortschrittHeute)
-                            )
+    val segmentsByDay = remember(stempelListe, istEingestempelt, eingestempeltSeit) {
+        val now = java.time.LocalDate.now()
+        val monday = now.with(java.time.DayOfWeek.MONDAY)
+        val sunday = now.with(java.time.DayOfWeek.SUNDAY)
+        val segments = mutableMapOf<java.time.LocalDate, MutableList<Pair<Float, Float>>>()
+        var currentStart: Date? = null
+        val sorted = stempelListe.mapNotNull {
+            val d = parseDateFlexible(it.zeit)
+            if (d != null) d to it.typ else null
+        }.sortedBy { it.first.time }
+        sorted.forEach { (d, typ) ->
+            when (typ) {
+                "Start" -> currentStart = d
+                "Ende" -> if (currentStart != null && currentStart!!.before(d)) {
+                    val start = currentStart!!.toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDateTime()
+                    val end = d.toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDateTime()
+                    var s = start
+                    var e = end
+                    while (!s.toLocalDate().isAfter(e.toLocalDate())) {
+                        val day = s.toLocalDate()
+                        val dayStart = s.withHour(0).withMinute(0).withSecond(0).withNano(0)
+                        val nextDayStart = dayStart.plusDays(1)
+                        val segEnd = if (e.isBefore(nextDayStart)) e else nextDayStart
+                        if (!day.isBefore(monday) && !day.isAfter(sunday)) {
+                            val startH = s.hour + s.minute / 60f
+                            val endH = segEnd.hour + segEnd.minute / 60f
+                            segments.getOrPut(day) { mutableListOf() }.add(startH to endH)
                         }
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            "Heute: ${arbeitsdauerHeute.ifBlank { "0h" }} / 8h",
-                            fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.secondary
-                        )
+                        s = nextDayStart
                     }
-                    // --- Wochenfortschritt ---
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Box(contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(
-                                progress = animatedWoche,
-                                strokeWidth = 10.dp,
-                                color = farbe(fortschrittWoche),
-                                modifier = Modifier.size(100.dp)
-                            )
-                            Text(
-                                text = String.format("%.0f%%", fortschrittWoche * 100),
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = farbe(fortschrittWoche)
-                            )
-                        }
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            "Woche: ${arbeitsdauerWoche.ifBlank { "0h" }} / 40h",
-                            fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.secondary
-                        )
-                    }
-                }
-
-                Spacer(Modifier.height(12.dp))
-                val workSegments =
-                    remember(stempelListe.size, istEingestempelt, eingestempeltSeit) {
-                        val now = java.time.LocalDate.now()
-                        val monday = now.with(java.time.DayOfWeek.MONDAY)
-                        val sunday = now.with(java.time.DayOfWeek.SUNDAY)
-                        val segments =
-                            mutableMapOf<java.time.LocalDate, MutableList<Pair<Float, Float>>>()
-                        var currentStart: Date? = null
-                        val sorted = stempelListe.mapNotNull {
-                            val d = parseDateFlexible(it.zeit)
-                            if (d != null) d to it.typ else null
-                        }.sortedBy { it.first.time }
-                        sorted.forEach { (d, typ) ->
-                            when (typ) {
-                                "Start" -> currentStart = d
-                                "Ende" -> if (currentStart != null && currentStart!!.before(d)) {
-                                    val start = currentStart!!.toInstant()
-                                        .atZone(java.time.ZoneId.systemDefault()).toLocalDateTime()
-                                    val end = d.toInstant().atZone(java.time.ZoneId.systemDefault())
-                                        .toLocalDateTime()
-                                    var s = start
-                                    var e = end
-                                    while (!s.toLocalDate().isAfter(e.toLocalDate())) {
-                                        val day = s.toLocalDate()
-                                        val dayStart =
-                                            s.withHour(0).withMinute(0).withSecond(0).withNano(0)
-                                        val nextDayStart = dayStart.plusDays(1)
-                                        val segEnd =
-                                            if (e.isBefore(nextDayStart)) e else nextDayStart
-                                        if (!day.isBefore(monday) && !day.isAfter(sunday)) {
-                                            val startH = s.hour + s.minute / 60f
-                                            val endH = segEnd.hour + segEnd.minute / 60f
-                                            segments.getOrPut(day) { mutableListOf() }
-                                                .add(startH to endH)
-                                        }
-                                        s = nextDayStart
-                                    }
-                                    currentStart = null
-                                }
-                            }
-                        }
-                        if (istEingestempelt && eingestempeltSeit != null) {
-                            val nowDt = Date()
-                            val start = eingestempeltSeit!!.toInstant()
-                                .atZone(java.time.ZoneId.systemDefault()).toLocalDateTime()
-                            val end = nowDt.toInstant().atZone(java.time.ZoneId.systemDefault())
-                                .toLocalDateTime()
-                            val day = start.toLocalDate()
-                            if (!day.isBefore(monday) && !day.isAfter(sunday)) {
-                                val startH = start.hour + start.minute / 60f
-                                val endH = end.hour + end.minute / 60f
-                                segments.getOrPut(day) { mutableListOf() }.add(startH to endH)
-                            }
-                        }
-                        segments
-                    }
-
-                val days = listOf(
-                    java.time.DayOfWeek.MONDAY,
-                    java.time.DayOfWeek.TUESDAY,
-                    java.time.DayOfWeek.WEDNESDAY,
-                    java.time.DayOfWeek.THURSDAY,
-                    java.time.DayOfWeek.FRIDAY,
-                    java.time.DayOfWeek.SATURDAY,
-                    java.time.DayOfWeek.SUNDAY
-                )
-                val labels = listOf("Mo", "Di", "Mi", "Do", "Fr", "Sa", "So")
-                val density = LocalDensity.current
-
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp)
-                ) {
-                    days.forEachIndexed { idx, dow ->
-                        val day = java.time.LocalDate.now()
-                            .with(java.time.temporal.TemporalAdjusters.previousOrSame(dow))
-                        val segs = workSegments[day] ?: emptyList()
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(16.dp)
-                                .padding(vertical = 2.dp)
-                        ) {
-                            Text(
-                                labels[idx],
-                                modifier = Modifier.width(24.dp),
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.secondary
-                            )
-                            BoxWithConstraints(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(10.dp)
-                                    .background(
-                                        MaterialTheme.colorScheme.surfaceVariant,
-                                        RoundedCornerShape(4.dp)
-                                    )
-                            ) {
-                                val totalWidth = constraints.maxWidth.toFloat()
-                                segs.forEach { (startH, endH) ->
-                                    val leftPx = (startH.coerceIn(0f, 24f) / 24f) * totalWidth
-                                    val widthPx = ((endH.coerceIn(0f, 24f) - startH.coerceIn(
-                                        0f,
-                                        24f
-                                    )).coerceAtLeast(0f) / 24f) * totalWidth
-                                    Box(
-                                        modifier = Modifier
-                                            .offset(x = with(density) { leftPx.toDp() })
-                                            .width(with(density) { widthPx.toDp() })
-                                            .fillMaxHeight()
-                                            .background(
-                                                MaterialTheme.colorScheme.primary,
-                                                RoundedCornerShape(4.dp)
-                                            )
-                                    )
-                                }
-                            }
-                        }
-                    }
-                    Spacer(Modifier.height(6.dp))
-                    Row(
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        listOf("0", "6", "12", "18", "24").forEach {
-                            Text(
-                                "$it h",
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.secondary
-                            )
-                        }
-                    }
-                }
-
-
-                Spacer(Modifier.height(12.dp))
-
-                if (ueberstundenText.isNotEmpty()) {
-                    val color = if (ueberstundenText.startsWith("-"))
-                        MaterialTheme.colorScheme.error
-                    else
-                        MaterialTheme.colorScheme.primary
-                    val label =
-                        if (ueberstundenText.startsWith("-")) "Minusstunden" else "Überstunden"
-                    Text(
-                        "$label: $ueberstundenText",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = color
-                    )
-                }
-
-                if (startwertAnzeige.isNotEmpty()) {
-                    val datumText =
-                        if (standDatumAnzeige.isNotEmpty()) " ($standDatumAnzeige)" else ""
-                    Text(
-                        "(inkl. Startwert $startwertAnzeige$datumText)",
-                        fontSize = 16.sp,
-                        color = MaterialTheme.colorScheme.secondary
-                    )
-                }
-
-                Spacer(Modifier.height(12.dp))
-                AbschnittTitel("Urlaub:")
-                Text("Genommen: $urlaubGenommen / $urlaubGesamt Tage", fontSize = 16.sp)
-                Text(
-                    "Verbleibend: $urlaubVerbleibend Tage",
-                    fontSize = 16.sp,
-                    color = MaterialTheme.colorScheme.secondary
-                )
-
-                Spacer(Modifier.height(12.dp))
-                AbschnittTitel("Nächste freie Tage:")
-
-                val aktuelleFeiertage = remember {
-                    holeFeiertageBW().sortedBy { it.date }
-                }
-                val heute = java.time.LocalDate.now()
-                val naechsteFeiertage = remember {
-                    holeFeiertageBW()
-                        .filter { it.date.isAfter(java.time.LocalDate.now()) }
-                        .take(3)
-                }
-                val formatter =
-                    java.time.format.DateTimeFormatter.ofPattern("EEE, dd.MM.yyyy", Locale.GERMAN)
-
-                naechsteFeiertage.forEach {
-                    val text = "${it.date.format(formatter)} – ${it.description}"
-                    Text(
-                        text = text,
-                        fontSize = 16.sp,
-                        color = MaterialTheme.colorScheme.secondary
-                    )
+                    currentStart = null
                 }
             }
         }
-        Column {
-            val buttonText = if (istEingestempelt) "Ende" else "Start"
-            val buttonColor = if (istEingestempelt)
-                MaterialTheme.colorScheme.error
-            else
-                MaterialTheme.colorScheme.primary
+        if (istEingestempelt && eingestempeltSeit != null) {
+            val nowDt = Date()
+            val start = eingestempeltSeit.toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDateTime()
+            val end = nowDt.toInstant().atZone(java.time.ZoneId.systemDefault()).toLocalDateTime()
+            val day = start.toLocalDate()
+            val weekNow = java.time.LocalDate.now()
+            val mondayNow = weekNow.with(java.time.DayOfWeek.MONDAY)
+            val sundayNow = weekNow.with(java.time.DayOfWeek.SUNDAY)
+            if (!day.isBefore(mondayNow) && !day.isAfter(sundayNow)) {
+                val startH = start.hour + start.minute / 60f
+                val endH = end.hour + end.minute / 60f
+                segments.getOrPut(day) { mutableListOf() }.add(startH to endH)
+            }
+        }
+        segments
+    }
 
-            Button(
-                onClick = {
-                    if (istEingestempelt) {
-                        addStempel("Ende", stempelListe, gson, logFile, homeofficeAktiv)
-                        statusText = "Ausgestempelt"
-                        istEingestempelt = false
-                        eingestempeltSeit = null
-                    } else {
-                        val jetzt = Date()
-                        addStempel("Start", stempelListe, gson, logFile, homeofficeAktiv)
-                        eingestempeltSeit = jetzt
-                        statusText = "Eingestempelt seit ${format.format(jetzt).substring(11)}"
-                        istEingestempelt = true
-                    }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(80.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = buttonColor)
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+        days.forEachIndexed { idx, dow ->
+            val day = java.time.LocalDate.now().with(java.time.temporal.TemporalAdjusters.previousOrSame(dow))
+            val segs = segmentsByDay[day] ?: emptyList()
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth().height(16.dp).padding(vertical = 2.dp)
             ) {
-                Text(buttonText, fontSize = 22.sp)
+                Text(labels[idx], modifier = Modifier.width(24.dp), fontSize = 12.sp, color = MaterialTheme.colorScheme.secondary)
+                BoxWithConstraints(
+                    modifier = Modifier.weight(1f).height(10.dp).background(
+                        MaterialTheme.colorScheme.surfaceVariant,
+                        RoundedCornerShape(4.dp)
+                    )
+                ) {
+                    val totalWidth = constraints.maxWidth.toFloat()
+                    segs.forEach { (startH, endH) ->
+                        val leftPx = (startH.coerceIn(0f, 24f) / 24f) * totalWidth
+                        val widthPx = ((endH.coerceIn(0f, 24f) - startH.coerceIn(0f, 24f)).coerceAtLeast(0f) / 24f) * totalWidth
+                        Box(
+                            modifier = Modifier
+                                .offset(x = with(density) { leftPx.toDp() })
+                                .width(with(density) { widthPx.toDp() })
+                                .fillMaxHeight()
+                                .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(4.dp))
+                        )
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+            listOf("0", "6", "12", "18", "24").forEach {
+                Text("$it h", fontSize = 11.sp, color = MaterialTheme.colorScheme.secondary)
             }
         }
     }
+}
+
+@Composable
+fun ArbeitszeitFortschritt(heute: String, woche: String) {
+    val regex = Regex("(\\d+)h\\s*(\\d+)?min?")
+    fun parseMinutes(text: String): Int {
+        val m = regex.find(text)
+        val h = m?.groupValues?.get(1)?.toIntOrNull() ?: 0
+        val min = m?.groupValues?.get(2)?.toIntOrNull() ?: 0
+        return h * 60 + min
+    }
+
+    val minutenHeute = parseMinutes(heute)
+    val minutenWoche = parseMinutes(woche)
+
+    val fortschrittHeute = minutenHeute / 480f
+    val fortschrittWoche = minutenWoche / 2400f
+
+    val animatedHeute = animateFloatAsState(
+        targetValue = fortschrittHeute.coerceAtMost(1f),
+        animationSpec = tween(durationMillis = 800)
+    ).value
+    val animatedWoche = animateFloatAsState(
+        targetValue = fortschrittWoche.coerceAtMost(1f),
+        animationSpec = tween(durationMillis = 800)
+    ).value
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        FortschrittKreis("Heute", animatedHeute, fortschrittHeute, 8f)
+        FortschrittKreis("Woche", animatedWoche, fortschrittWoche, 40f)
+    }
+}
+
+@Composable
+fun FortschrittKreis(label: String, animated: Float, progress: Float, soll: Float) {
+    val color = if (progress < 1f)
+        androidx.compose.ui.graphics.lerp(Color.Red, Color(0f, 0.6f, 0f), progress)
+    else
+        Color(0f, 0.6f, 0f)
+
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(
+                progress = animated,
+                strokeWidth = 10.dp,
+                color = color,
+                modifier = Modifier.size(100.dp)
+            )
+            Text(
+                text = String.format("%.0f%%", progress * 100),
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = color
+            )
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "$label: ${String.format("%.1f", progress * soll)}h / ${soll.toInt()}h",
+            fontSize = 14.sp,
+            color = MaterialTheme.colorScheme.secondary
+        )
+    }
+}
+@Composable
+fun UrlaubSection(genommen: Int, verbleibend: Int, gesamt: Int) {
+    AbschnittTitel("Urlaub:")
+    Text("Genommen: $genommen / $gesamt Tage", fontSize = 16.sp)
+    Text(
+        "Verbleibend: $verbleibend Tage",
+        fontSize = 16.sp,
+        color = MaterialTheme.colorScheme.secondary
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
