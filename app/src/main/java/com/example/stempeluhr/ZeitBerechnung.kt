@@ -28,37 +28,47 @@ fun formatZeit(ms: Long): String {
     return "${stunden}h ${restMin}min"
 }
 
+data class ZeitenErgebnis(
+    val heute: String,
+    val gesamt: String
+)
+
 fun berechneAlleZeiten(
-    stempelListe: List<Stempel>,
-    startZeit: Date?,
-    aktiv: Boolean,
+    liste: List<StempelEintrag>,
+    startZeit: Date,
+    eingestempelt: Boolean,
     context: Context
-): ZeitSumme {
-    if (stempelListe.isEmpty())
-        return ZeitSumme("", "", "", "", "", "", "+0:00")
+): ZeitenErgebnis {
+    if (liste.isEmpty()) return ZeitenErgebnis("0h", "0h")
 
-    val tagFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-    val jetzt = System.currentTimeMillis()
-    val heuteStr = tagFormat.format(Date(jetzt))
-    val jetztDate = Date(jetzt)
+    var gesamtMinuten = 0
+    var heuteMinuten = 0
 
-    val (startwertMinuten, standDatum) = ladeEinstellungen(context, tagFormat)
-    val korrigierterStichtag = korrigiereWochenenden(standDatum)
-    val zeitpaare = erzeugeZeitpaare(stempelListe, startZeit, aktiv, jetztDate)
-    val tageszuordnung = berechneTageszuordnung(zeitpaare, tagFormat)
-    val zeiten = berechneZeitraeume(tageszuordnung, tagFormat, korrigierterStichtag)
-    val (_, ueberstundenText) = berechneSollzeitUndUeberstunden(
-        zeiten.seitStichtag, korrigierterStichtag, startwertMinuten
-    )
+    val heuteDatum = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
 
-    return ZeitSumme(
-        heute = formatZeit(zeiten.heute),
-        woche = formatZeit(zeiten.woche),
-        monat = formatZeit(zeiten.monat),
-        jahr = formatZeit(zeiten.jahr),
-        startwert = if (startwertMinuten != 0) formatMinutenAsText(startwertMinuten) else "",
-        standDatum = korrigierterStichtag?.let { tagFormat.format(it) } ?: "",
-        ueberstunden = ueberstundenText
+    val formatTag = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+
+    for (i in 0 until liste.size - 1) {
+        val start = Date(liste[i].zeitpunkt)
+        val ende = Date(liste[i + 1].zeitpunkt)
+        if (liste[i].typ == "Start" && liste[i + 1].typ == "Ende") {
+            val diffMin = ((ende.time - start.time) / 60000).toInt()
+            gesamtMinuten += diffMin
+            if (formatTag.format(start) == heuteDatum) {
+                heuteMinuten += diffMin
+            }
+        }
+    }
+
+    val heuteH = heuteMinuten / 60
+    val heuteM = heuteMinuten % 60
+    val gesamtH = gesamtMinuten / 60
+    val gesamtM = gesamtMinuten % 60
+    Log.d("ZEIT", "Heute=$heuteMinuten min, Gesamt=$gesamtMinuten min")
+
+    return ZeitenErgebnis(
+        heute = String.format("%dh %02dm", heuteH, heuteM),
+        gesamt = String.format("%dh %02dm", gesamtH, gesamtM)
     )
 }
 

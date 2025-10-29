@@ -459,7 +459,10 @@ fun parseStartwertToMinutes(input: String): Int {
         trimmed.toIntOrNull() ?: 0
     }
 }
-
+fun debugLine(tag: String = "DEBUG") {
+    val trace = Throwable().stackTrace[1]
+    Log.d(tag, "at ${trace.fileName}:${trace.lineNumber}")
+}
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EinstellungenScreen(onClose: () -> Unit) {
@@ -604,6 +607,7 @@ fun EinstellungenScreen(onClose: () -> Unit) {
                 Button(
                     onClick = {
                         Log.d("DEBUG", "Button Hinzufügen geklickt: von=$vonDatum bis=$bisDatum")
+
                         scope.launch(Dispatchers.IO) {
                             try {
                                 val format = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
@@ -636,33 +640,60 @@ fun EinstellungenScreen(onClose: () -> Unit) {
                                 }
 
                                 var tage = 0
-                                val cal = Calendar.getInstance()
-                                cal.time = start
-/*
-                                while (!cal.after(ende)) {
+                                val feiertagsListe = mutableListOf<String>()
+
+                                val cal = Calendar.getInstance().apply {
+                                    time = start
+                                    set(Calendar.HOUR_OF_DAY, 0)
+                                    set(Calendar.MINUTE, 0)
+                                    set(Calendar.SECOND, 0)
+                                    set(Calendar.MILLISECOND, 0)
+                                }
+
+                                val endCal = Calendar.getInstance().apply {
+                                    time = ende
+                                    set(Calendar.HOUR_OF_DAY, 0)
+                                    set(Calendar.MINUTE, 0)
+                                    set(Calendar.SECOND, 0)
+                                    set(Calendar.MILLISECOND, 0)
+                                }
+
+                                while (!cal.after(endCal)) {
                                     val tag = cal.get(Calendar.DAY_OF_WEEK)
-                                    if (tag in Calendar.MONDAY..Calendar.FRIDAY && !istFeiertagBW(cal.clone() as Calendar)) {
-                                        tage++
+                                    val clone = cal.clone() as Calendar
+
+                                    if (tag in Calendar.MONDAY..Calendar.FRIDAY) {
+                                        if (istFeiertagBW(clone)) {
+                                            feiertagsListe.add(format.format(cal.time))
+                                            Log.d("DEBUG", "${format.format(cal.time)} → Feiertag übersprungen")
+                                        } else {
+                                            tage++
+                                            Log.d("DEBUG", "${format.format(cal.time)} → Urlaubstag gezählt")
+                                        }
                                     }
                                     cal.add(Calendar.DAY_OF_YEAR, 1)
                                 }
-*/
-                                while (!cal.after(ende)) {
-                                    val tag = cal.get(Calendar.DAY_OF_WEEK)
-                                    if (tag in Calendar.MONDAY..Calendar.FRIDAY) tage++
-                                    cal.add(Calendar.DAY_OF_YEAR, 1)
+
+                                urlaubRepo.add(vonDatum, bisDatum, tage)
+
+                                // Statusmeldung zusammenbauen
+                                val feiertagsText = when {
+                                    feiertagsListe.isEmpty() -> ""
+                                    feiertagsListe.size == 1 -> ", 1 Feiertag am ${feiertagsListe[0]}"
+                                    else -> ", ${feiertagsListe.size} Feiertage (${feiertagsListe.joinToString(", ")})"
                                 }
 
-                                Log.d("DEBUG", "vor add: $vonDatum bis $bisDatum")
-                                urlaubRepo.add(vonDatum, bisDatum, tage)
-                                Log.d("DEBUG", "nach add() aufgerufen")
+                                val meldung = "✔ $tage Tage hinzugefügt$feiertagsText"
+
+                                Log.d("DEBUG", meldung)
 
                                 withContext(Dispatchers.Main) {
-                                    statusText = "✔ $tage Tage hinzugefügt"
+                                    statusText = meldung
                                     statusColor = primaryColor
                                     vonDatum = ""
                                     bisDatum = ""
                                 }
+
                             } catch (e: Exception) {
                                 withContext(Dispatchers.Main) {
                                     statusText = "❌ Fehler: ${e.message}"
@@ -672,7 +703,9 @@ fun EinstellungenScreen(onClose: () -> Unit) {
                         }
                     },
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("Hinzufügen") }
+                ) {
+                    Text("Hinzufügen")
+                }
 
 
                 // Date-Picker Dialoge
